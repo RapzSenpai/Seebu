@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SeeBu — Admin Panel Wireframe (Figure 31)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .phone {
+      width: 390px;
+      min-height: 844px;
+      background: #111;
+      border-radius: 40px;
+      border: 3px solid #222;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      padding: 14px 28px 0;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .screen {
+      padding: 20px 20px 40px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .back-btn {
+      width: 42px;
+      height: 42px;
+      background: #1a1a1a;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 18px;
+    }
+    .header-title { font-size: 22px; font-weight: 900; color: #fff; }
+    .header-sub { font-size: 12px; color: #888; margin-top: 2px; }
+    .admin-badge {
+      margin-left: auto;
+      width: 42px;
+      height: 42px;
+      background: #f7f200;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .section-header {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #f7f200;
+      margin-bottom: 14px;
+      margin-top: 8px;
+      margin-left: 4px;
+    }
+    .stats-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .stat-card {
+      flex: 1;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .stat-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+    .stat-value { font-size: 24px; font-weight: 900; color: #fff; }
+    .stat-label { font-size: 11px; color: #888; margin-top: 4px; font-weight: 600; }
+    .user-card {
+      display: flex;
+      align-items: center;
+      padding: 14px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      margin-bottom: 10px;
+    }
+    .user-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 18px;
+      color: #000;
+    }
+    .user-info { flex: 1; margin-left: 12px; }
+    .user-name { font-size: 15px; font-weight: 700; color: #fff; }
+    .user-email { font-size: 12px; color: #888; margin-top: 2px; }
+    .user-interests { font-size: 10px; color: #666; margin-top: 4px; }
+    .role-badge {
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .role-admin { background: rgba(247,242,0,0.15); color: #f7f200; }
+    .role-user { background: rgba(255,255,255,0.05); color: #888; }
+    .caption {
+      text-align: center;
+      color: #555;
+      font-size: 12px;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="phone">
+      <div class="status-bar">
+        <span>9:41</span>
+        <span>●●●</span>
+      </div>
+      <div class="screen">
+        <div class="header">
+          <div class="back-btn">←</div>
+          <div>
+            <div class="header-title">Admin Panel</div>
+            <div class="header-sub">Administrator</div>
+          </div>
+          <div class="admin-badge">🛡</div>
+        </div>
+
+        <div class="section-header">Overview</div>
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(79,195,247,0.15);">👥</div>
+            <div class="stat-value">3</div>
+            <div class="stat-label">Total Users</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(247,242,0,0.15);">📍</div>
+            <div class="stat-value">12</div>
+            <div class="stat-label">Spots Listed</div>
+          </div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(255,112,67,0.15);">🛡</div>
+            <div class="stat-value">1</div>
+            <div class="stat-label">Admins</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(129,199,132,0.15);">✓</div>
+            <div class="stat-value">2</div>
+            <div class="stat-label">Regular Users</div>
+          </div>
+        </div>
+
+        <div class="section-header">Registered Users</div>
+        <div class="user-card">
+          <div class="user-avatar" style="background: #f7f200;">A</div>
+          <div class="user-info">
+            <div class="user-name">Admin User</div>
+            <div class="user-email">admin@seebu.com</div>
+            <div class="user-interests">Nature · Adventure · History</div>
+          </div>
+          <div class="role-badge role-admin">Admin</div>
+        </div>
+        <div class="user-card">
+          <div class="user-avatar" style="background: #333;">D</div>
+          <div class="user-info">
+            <div class="user-name">Demo Traveler</div>
+            <div class="user-email">demo@example.com</div>
+            <div class="user-interests">Beach · Nature</div>
+          </div>
+          <div class="role-badge role-user">User</div>
+        </div>
+        <div class="user-card">
+          <div class="user-avatar" style="background: #333;">J</div>
+          <div class="user-info">
+            <div class="user-name">Juan Dela Cruz</div>
+            <div class="user-email">juan@email.com</div>
+            <div class="user-interests">Adventure · History</div>
+          </div>
+          <div class="role-badge role-user">User</div>
+        </div>
+
+      </div>
+    </div>
+    <p class="caption">Figure 31 — Admin Panel Wireframe (Section 5.1)</p>
+  </div>
+</body>
+</html>

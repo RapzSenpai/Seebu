@@ -1,0 +1,47 @@
+rules_version = '2';
+
+// SeeBu stores user profiles and the Local Guides catalog. Spot content
+// ships with the app (utils/spots.js). Admin access is role-based:
+// create the user in Authentication, then set users/{uid} role='admin'
+// manually in the Firestore Console (console bypasses rules).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /users/{userId} {
+      // A user can read their own document. The admin can read every profile
+      // so the Admin Panel user list works.
+      allow read: if request.auth != null
+        && (request.auth.uid == userId || isAdmin());
+
+      // Users can create/update their own doc but can never grant
+      // themselves admin. Only an existing admin can set role='admin'.
+      // ponytail: get() bootstrap needs one manual role='admin' via console
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && (request.resource.data.get('role', 'user') != 'admin' || isAdmin());
+
+      allow delete: if request.auth != null
+        && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Local Guides: any signed-in user can browse them; only the admin can
+    // manage them. A guide doc looks like
+    //   { spotId, name, specialty, location, contact, photoUrl, verified,
+    //     rating, reviews }
+    // and attaches to a destination via spotId (matching utils/spots.js ids).
+    match /guides/{guideId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Default deny for anything not matched above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
