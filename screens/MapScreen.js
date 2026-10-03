@@ -2,9 +2,13 @@ import React from 'react';
 import { View, StyleSheet, StatusBar, Platform } from 'react-native';
 import { router } from 'expo-router';
 import MapComponent from './MapComponent';
-import { cebuSpots } from '../utils/spots';
+import { useSpots } from '../utils/useSpots';
+import { useTheme } from '../ThemeContext';
+import IslandBackground from '../components/IslandBackground';
 
 const MapScreen = () => {
+  const { colors, isDarkMode } = useTheme();
+  const { spots } = useSpots();
   const handleSpotPress = (spot) => {
     router.push({
       pathname: '/spot',
@@ -13,13 +17,14 @@ const MapScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <IslandBackground />
       <StatusBar
-        barStyle="light-content"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         translucent
         backgroundColor="transparent"
       />
-      <MapComponent spots={cebuSpots} onSpotPress={handleSpotPress} />
+      <MapComponent spots={spots} onSpotPress={handleSpotPress} />
     </View>
   );
 };

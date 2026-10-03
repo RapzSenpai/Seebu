@@ -18,15 +18,34 @@ service cloud.firestore {
       allow read: if request.auth != null
         && (request.auth.uid == userId || isAdmin());
 
-      // Users can create/update their own doc but can never grant
-      // themselves admin. Only an existing admin can set role='admin'.
+      // Users create their own doc but can never grant themselves admin.
+      // Only an existing admin can create a doc with role='admin'.
       // ponytail: get() bootstrap needs one manual role='admin' via console
-      allow create, update: if request.auth != null
+      allow create: if request.auth != null
         && request.auth.uid == userId
         && (request.resource.data.get('role', 'user') != 'admin' || isAdmin());
 
+      // Users update their own doc without touching their role; the admin
+      // can update any doc, which is what powers Make/Remove admin.
+      // Without the isAdmin() branch the admin role buttons fail closed.
+      allow update: if request.auth != null
+        && (isAdmin()
+          || (request.auth.uid == userId
+            && request.resource.data.get('role', 'user')
+              == resource.data.get('role', 'user')));
+
       allow delete: if request.auth != null
         && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Spots: any signed-in user can read published spots; only the admin
+    // can create/update them. Built-in spots (spotId 1-12) live in
+    // utils/spots.js; a Firestore doc with the same numeric spotId acts as
+    // an override, higher spotIds are admin-published customs. Only custom
+    // docs may be deleted; deleting a built-in override reverts to static.
+    match /spots/{spotDocId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if isAdmin();
     }
 
     // Local Guides: any signed-in user can browse them; only the admin can
@@ -37,6 +56,50 @@ service cloud.firestore {
     match /guides/{guideId} {
       allow read: if request.auth != null;
       allow create, update, delete: if isAdmin();
+    }
+
+    // Reviews: any signed-in user can read them; a user writes only their
+    // own review per spot (doc id "<spotId>_<uid>"), rating int 1-5,
+    // text 1-500 chars. Reviewer names are denormalized on the doc because
+    // users/{uid} is only self/admin-readable.
+    match /reviews/{reviewId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.spotId is int
+        && reviewId == string(request.resource.data.spotId) + '_' + request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 1
+        && request.resource.data.displayName.size() <= 100
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.text.matches('.*[^ ].*');
+      allow delete: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // Inquiries: users create their own and read their own (Contact >
+    // Your messages shows their threads + admin replies); only the admin
+    // reads everything, marks handled, and appends replies[]. Keeps users
+    // from seeing each other's messages (same shape as reviews above).
+    match /inquiries/{inquiryId} {
+      allow read: if request.auth != null
+        && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.message is string
+        && request.resource.data.message.size() >= 1
+        && request.resource.data.message.size() <= 1000
+        && request.resource.data.message.matches('.*[^ ].*')
+        && request.resource.data.category is string
+        && request.resource.data.category.size() >= 1
+        && request.resource.data.category.size() <= 40;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // Default deny for anything not matched above.

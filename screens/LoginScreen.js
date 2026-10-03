@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  KeyboardAvoidingView, 
-  Platform, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
   Alert,
   ActivityIndicator,
   ScrollView
@@ -14,8 +14,13 @@ import {
 import { auth, signInWithEmailAndPassword, sendPasswordResetEmail } from '../firebase';
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { useTheme } from '../ThemeContext';
+import { useColorScheme } from '../lib/useColorScheme';
+import IslandBackground from '../components/IslandBackground';
 
 const LoginScreen = () => {
+  const { colors } = useTheme();
+  const { colors: full } = useColorScheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -58,8 +63,8 @@ const LoginScreen = () => {
       `Send a password reset link to ${normalizedEmail}?`,
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Send", 
+        {
+          text: "Send",
           onPress: async () => {
             try {
               await sendPasswordResetEmail(auth, normalizedEmail);
@@ -74,30 +79,32 @@ const LoginScreen = () => {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
     >
+      <IslandBackground />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoText}>S</Text>
+          <View style={[styles.logoBadge, { backgroundColor: colors.accent }]}>
+            <Text style={[styles.logoText, { color: full.accentForeground }]}>S</Text>
           </View>
-          <Text style={styles.title}>SeeBu</Text>
-          <Text style={styles.subtitle}>Discover the Heart of Cebu.</Text>
+          <Text style={[styles.title, { color: colors.text }]}>SeeBu</Text>
+          <Text style={[styles.subtitle, { color: colors.subText }]}>Discover the Heart of Cebu.</Text>
         </View>
 
         <View style={styles.form}>
           {/* Email Input */}
           <View style={[
-            styles.inputContainer, 
-            focusedInput === 'email' && styles.inputFocused
+            styles.inputContainer,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            focusedInput === 'email' && { borderColor: colors.accent, backgroundColor: full.muted }
           ]}>
-            <Mail color={focusedInput === 'email' ? "#f7f200" : "#666"} size={20} />
-            <TextInput 
-              placeholder="Email Address" 
-              placeholderTextColor="#555"
-              style={styles.input}
+            <Mail color={focusedInput === 'email' ? colors.accent : colors.subText} size={20} />
+            <TextInput
+              placeholder="Email Address"
+              placeholderTextColor={colors.subText}
+              style={[styles.input, { color: colors.text }]}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -109,14 +116,15 @@ const LoginScreen = () => {
 
           {/* Password Input */}
           <View style={[
-            styles.inputContainer, 
-            focusedInput === 'password' && styles.inputFocused
+            styles.inputContainer,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            focusedInput === 'password' && { borderColor: colors.accent, backgroundColor: full.muted }
           ]}>
-            <Lock color={focusedInput === 'password' ? "#f7f200" : "#666"} size={20} />
-            <TextInput 
-              placeholder="Password" 
-              placeholderTextColor="#555"
-              style={styles.input}
+            <Lock color={focusedInput === 'password' ? colors.accent : colors.subText} size={20} />
+            <TextInput
+              placeholder="Password"
+              placeholderTextColor={colors.subText}
+              style={[styles.input, { color: colors.text }]}
               secureTextEntry={secureText}
               value={password}
               onChangeText={setPassword}
@@ -124,30 +132,34 @@ const LoginScreen = () => {
               onBlur={() => setFocusedInput(null)}
             />
             <TouchableOpacity onPress={() => setSecureText(!secureText)}>
-              {secureText ? <EyeOff color="#666" size={20} /> : <Eye color="#f7f200" size={20} />}
+              {secureText ? <EyeOff color={colors.subText} size={20} /> : <Eye color={colors.accent} size={20} />}
             </TouchableOpacity>
           </View>
 
           {!!loginError && (
-            <Text style={styles.errorText}>{loginError}</Text>
+            <Text style={[styles.errorText, { color: full.destructive }]}>{loginError}</Text>
           )}
 
           <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotBtn}>
-            <Text style={styles.forgotText}>Forgot Password?</Text>
+            <Text style={[styles.forgotText, { color: colors.accent }]}>Forgot Password?</Text>
           </TouchableOpacity>
 
           {/* Sign In Button */}
-          <TouchableOpacity 
-            style={[styles.button, loading && { opacity: 0.7 }]} 
+          <TouchableOpacity
+            style={[
+              styles.button,
+              { backgroundColor: colors.accent, shadowColor: colors.accent },
+              loading && { opacity: 0.7 }
+            ]}
             onPress={handleLogin}
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color={full.accentForeground} />
             ) : (
               <View style={styles.buttonInner}>
-                <Text style={styles.buttonText}>Sign In</Text>
-                <ArrowRight color="#000" size={20} />
+                <Text style={[styles.buttonText, { color: full.accentForeground }]}>Sign In</Text>
+                <ArrowRight color={full.accentForeground} size={20} />
               </View>
             )}
           </TouchableOpacity>
@@ -155,12 +167,12 @@ const LoginScreen = () => {
         </View>
 
         {/* Footer */}
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => router.replace('/register')}
           style={styles.footerLink}
         >
-          <Text style={styles.footerText}>
-            Don't have an account? <Text style={styles.link}>Sign Up</Text>
+          <Text style={[styles.footerText, { color: colors.subText }]}>
+            Don&apos;t have an account? <Text style={[styles.link, { color: colors.accent }]}>Sign Up</Text>
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -169,59 +181,53 @@ const LoginScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080808' },
+  container: { flex: 1 },
   scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 25 },
   header: { alignItems: 'center', marginBottom: 40 },
-  logoBadge: { 
-    width: 60, 
-    height: 60, 
-    backgroundColor: '#f7f200', 
-    borderRadius: 18, 
-    justifyContent: 'center', 
+  logoBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 15,
     transform: [{ rotate: '-10deg' }]
   },
-  logoText: { fontSize: 32, fontWeight: '900', color: '#000' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 1 },
-  subtitle: { fontSize: 15, color: '#666', marginTop: 5 },
-  
+  logoText: { fontSize: 32, fontWeight: '900' },
+  title: { fontSize: 28, fontWeight: '900', letterSpacing: 1 },
+  subtitle: { fontSize: 15, marginTop: 5 },
+
   form: { width: '100%' },
-  inputContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#121212', 
-    borderRadius: 16, 
-    marginBottom: 16, 
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    marginBottom: 16,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: '#1a1a1a',
     height: 60
   },
-  inputFocused: { borderColor: '#f7f200', backgroundColor: '#161616' },
-  input: { flex: 1, color: '#fff', marginLeft: 12, fontSize: 16 },
-  
+  input: { flex: 1, marginLeft: 12, fontSize: 16 },
+
   forgotBtn: { alignSelf: 'flex-end', marginBottom: 25 },
-  forgotText: { color: '#f7f200', fontSize: 14, fontWeight: '600' },
-  
-  button: { 
-    backgroundColor: '#f7f200', 
-    height: 60, 
-    borderRadius: 16, 
-    justifyContent: 'center', 
+  forgotText: { fontSize: 14, fontWeight: '600' },
+
+  button: {
+    height: 60,
+    borderRadius: 16,
+    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#f7f200',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 8
   },
   buttonInner: { flexDirection: 'row', alignItems: 'center' },
-  buttonText: { color: '#000', fontWeight: '800', fontSize: 18, marginRight: 8 },  footerLink: { marginTop: 40 },
-  footerText: { color: '#666', textAlign: 'center', fontSize: 15 },
-  link: { color: '#f7f200', fontWeight: '800' },
+  buttonText: { fontWeight: '800', fontSize: 18, marginRight: 8 },
+  footerLink: { marginTop: 40 },
+  footerText: { textAlign: 'center', fontSize: 15 },
+  link: { fontWeight: '800' },
   errorText: {
-    color: '#ff4d4d',
     fontSize: 14,
     marginBottom: 12,
     marginLeft: 6,

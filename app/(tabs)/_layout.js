@@ -1,9 +1,30 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as NavigationBar from 'expo-navigation-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../ThemeContext';
+import { useColorScheme } from '../../lib/useColorScheme';
+import { useUser } from '../../UserContext';
 
 export default function TabLayout() {
+  const { colors, isDarkMode } = useTheme();
+  const { colors: full } = useColorScheme();
+  const { isAdmin, loading: roleLoading } = useUser();
+  const insets = useSafeAreaInsets();
+
+  // ponytail: system nav bar follows app theme so edge-to-edge never clashes.
+  // Side spacing of the app tab bar lives in tabBarStyle below, not here.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    NavigationBar.setBackgroundColorAsync(isDarkMode ? '#08080A' : '#F2F5F7').catch(() => {});
+    NavigationBar.setButtonStyleAsync(isDarkMode ? 'light' : 'dark').catch(() => {});
+  }, [isDarkMode]);
+
+  if (roleLoading) return null;
+  if (isAdmin) return <Redirect href="/admin" />;
+
   return (
     <Tabs
       screenOptions={({ route }) => ({
@@ -18,47 +39,62 @@ export default function TabLayout() {
           } else if (route.name === 'settings') {
             iconName = focused ? 'settings' : 'settings-outline';
           }
-          const iconScale = focused ? 1.15 : 1;
+          const iconScale = focused ? 1.08 : 1;
           return (
             <Ionicons
               name={iconName}
-              size={size}
+              size={26}
               color={color}
               style={{ transform: [{ scale: iconScale }] }}
             />
           );
         },
-        tabBarActiveTintColor: '#f7f200',
-        tabBarInactiveTintColor: '#888',
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: full.mutedForeground,
         headerShown: false,
         animationEnabled: true,
         lazy: true,
-        sceneContainerStyle: { backgroundColor: '#080808' },
-        tabBarPressColor: '#f7f20033',
+        sceneContainerStyle: { backgroundColor: colors.background },
+        tabBarPressColor: colors.accent,
 
+        tabBarHideOnKeyboard: true,
         /* FLOATING TAB BAR STYLING */
         tabBarStyle: {
           position: 'absolute',
-          bottom: 20, // Distance from bottom of screen
-          left: 20, // Horizontal margin
-          right: 20, // Horizontal margin
-          elevation: 5, // Shadow for Android
-          backgroundColor: '#121212', // Slightly lighter than black to see the float
-          borderRadius: 25, // Rounded pill shape
-          height: 65, // Height of the bar
-          borderTopWidth: 0, // Remove default top border
-          paddingBottom: Platform.OS === 'ios' ? 20 : 10, // Adjust for OS
-          paddingTop: 10,
-          // Shadow for iOS
+          bottom: Math.max(16, insets.bottom + 10),
+          left: 20,
+          right: 20,
+          start: 20,
+          end: 20,
+          elevation: 3,
+          backgroundColor: colors.card,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 25,
+          height: 64,
+          paddingBottom: 8,
+          paddingTop: 8,
+          // ponytail: shadow is always black + faint. colors.text is white
+          // in dark mode = glowing bar. Border carries the separation.
           shadowColor: '#000',
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.3,
-          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.12,
+          shadowRadius: 6,
+          ...Platform.select({
+            web: { maxWidth: 520, marginHorizontal: 'auto' },
+            default: {},
+          }),
+        },
+        tabBarItemStyle: {
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingVertical: 2,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
-          marginBottom: 5,
+          letterSpacing: 0.2,
+          marginTop: 2,
         },
       })}
     >

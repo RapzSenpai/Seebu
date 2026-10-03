@@ -1,27 +1,45 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { auth, db } from '../firebase';
 import { doc, setDoc, deleteField } from 'firebase/firestore';
 
-// Show incoming notifications while the app is in the foreground.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldShowAlert: true, // legacy fallback
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
+// Remote push was removed from Expo Go in SDK 53 (dev-build only). Local
+// notifications still work in Expo Go. This module lazy-loads
+// expo-notifications so merely opening Settings does not spam the Expo Go
+// push warning, and skips the push-token step entirely when running in Go.
+const isExpoGo = Constants.appOwnership === 'expo';
 
-const ensureAndroidChannel = async () => {
-  if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync('default', {
-    name: 'SeeBu Notifications',
-    importance: Notifications.AndroidImportance.DEFAULT,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#f7f200',
-  });
+let Notifications = null;
+let handlerSet = false;
+
+const loadNotifications = () => {
+  if (!Notifications) {
+    // The library logs an Expo Go push warning at import time. Mute console
+    // for exactly that import; real errors are still surfaced by our code.
+    const warn = console.warn;
+    const error = console.error;
+    console.warn = () => {};
+    console.error = () => {};
+    try {
+      Notifications = require('expo-notifications');
+    } finally {
+      console.warn = warn;
+      console.error = error;
+    }
+  }
+  if (!handlerSet) {
+    handlerSet = true;
+    // Show incoming notifications while the app is in the foreground.
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      }),
+    });
+  }
+  return Notifications;
 };
 
 // Persist the preference on the user's own Firestore document (setDoc + merge
@@ -37,18 +55,26 @@ const savePreference = async (values) => {
 };
 
 /**
- * Turn notifications on: Android channel, OS permission prompt, capture the
- * Expo push token (stored on the user doc so a backend can target the device),
- * persist the preference, and fire a local confirmation so the user can see
- * the pipeline working immediately.
+ * Turn notifications on: Android channel, OS permission prompt, persist the
+ * preference, and fire a local confirmation so the user can see the pipeline
+ * working immediately. In Expo Go the Expo push token step is skipped
+ * (remote push needs a dev build); local notifications still work.
  */
 export const enableNotifications = async () => {
-  await ensureAndroidChannel();
+  const N = loadNotifications();
+  if (Platform.OS === 'android') {
+    await N.setNotificationChannelAsync('default', {
+      name: 'SeeBu Notifications',
+      importance: N.AndroidImportance.DEFAULT,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#0369A1',
+    });
+  }
 
-  const current = await Notifications.getPermissionsAsync();
+  const current = await N.getPermissionsAsync();
   let status = current.status;
   if (status !== 'granted') {
-    const requested = await Notifications.requestPermissionsAsync();
+    const requested = await N.requestPermissionsAsync();
     status = requested.status;
   }
   if (status !== 'granted') {
@@ -56,21 +82,25 @@ export const enableNotifications = async () => {
   }
 
   let token = null;
-  try {
-    const response = await Notifications.getExpoPushTokenAsync();
-    token = response?.data || null;
-  } catch (error) {
-    // Expected until an EAS project (app.json extra.eas.projectId) exists.
-    console.warn('Expo push token unavailable:', error?.message);
+  if (!isExpoGo) {
+    try {
+      const response = await N.getExpoPushTokenAsync();
+      token = response?.data || null;
+    } catch (error) {
+      // Expected until an EAS project (app.json extra.eas.projectId) exists.
+      console.warn('Expo push token unavailable:', error?.message);
+    }
   }
 
   await savePreference({ notificationsEnabled: true, ...(token ? { expoPushToken: token } : {}) });
 
   try {
-    await Notifications.scheduleNotificationAsync({
+    await N.scheduleNotificationAsync({
       content: {
         title: 'Notifications enabled',
-        body: 'SeeBu will let you know about travel updates and tips for your trips.',
+        body: isExpoGo
+          ? 'Local reminders are on. Remote push needs a dev build.'
+          : 'SeeBu will let you know about travel updates and tips for your trips.',
       },
       trigger: null, // deliver immediately
     });
@@ -78,7 +108,7 @@ export const enableNotifications = async () => {
     console.warn('Local confirmation notification failed:', error?.message);
   }
 
-  return { ok: true, token };
+  return { ok: true, token, localOnly: isExpoGo };
 };
 
 /**
@@ -86,8 +116,9 @@ export const enableNotifications = async () => {
  * push token so the device is no longer targeted.
  */
 export const disableNotifications = async () => {
+  const N = loadNotifications();
   try {
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    await N.cancelAllScheduledNotificationsAsync();
   } catch (error) {
     console.warn('Could not cancel scheduled notifications:', error?.message);
   }

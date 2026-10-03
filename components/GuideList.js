@@ -3,6 +3,8 @@ import { View, Text, Image, TouchableOpacity, ActivityIndicator, StyleSheet, Lin
 import { Phone, ShieldCheck, Star, Users } from 'lucide-react-native';
 import { db } from '../firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
+import { useTheme } from '../ThemeContext';
+import { useColorScheme } from '../lib/useColorScheme';
 
 /**
  * Local Guides for a spot, backed by the Firestore `guides` collection.
@@ -12,10 +14,17 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
  * Guide docs are created by the admin (Firebase Console) — until some exist,
  * this renders an honest empty state instead of placeholder people.
  *
- * Booking stays intentionally simple: it dials the contact number stored on
- * the guide's document (same tel: flow the app already used).
+ * Contact stays intentionally simple: it dials the number stored on the
+ * guide's document. Guides are recommendations, not employees — any fee or
+ * schedule is arranged directly with the guide, outside the app.
  */
-const GuideList = ({ spot, theme }) => {
+const GuideList = ({ spot, theme: themeProp }) => {
+  const { colors } = useTheme();
+  const { colors: full } = useColorScheme();
+  // SpotDetail passes a token-built theme adapter; fall back to context.
+  // Normalize subtext/subText key casing across callers.
+  const theme = themeProp ?? { ...colors, subtext: colors.subText };
+  const subtext = theme.subtext ?? theme.subText ?? colors.subText;
   const [guides, setGuides] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,10 +68,10 @@ const GuideList = ({ spot, theme }) => {
   if (guides.length === 0) {
     return (
       <View style={[styles.emptyCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Users size={28} color={theme.subtext} />
+        <Users size={28} color={subtext} />
         <Text style={[styles.emptyTitle, { color: theme.text }]}>No local guides yet</Text>
-        <Text style={[styles.emptyText, { color: theme.subtext }]}>
-          Certified guides for {spot.loc} will show up here once the SeeBu team adds them.
+        <Text style={[styles.emptyText, { color: subtext }]}>
+          Recommended guides for {spot.loc} will show up here once the SeeBu team adds them.
         </Text>
       </View>
     );
@@ -70,8 +79,11 @@ const GuideList = ({ spot, theme }) => {
 
   return (
     <>
-      <Text style={[styles.sectionHeader, { color: theme.subtext }]}>
-        Certified Locals in {spot.loc}
+      <Text style={[styles.sectionHeader, { color: subtext }]}>
+        Recommended guides in {spot.loc}
+      </Text>
+      <Text style={[styles.disclaimer, { color: subtext }]}>
+        Listed by SeeBu — contact and arrange with them directly. No in-app booking or payment.
       </Text>
       {guides.map((guide) => (
         <View
@@ -92,15 +104,15 @@ const GuideList = ({ spot, theme }) => {
               <Text style={[styles.guideName, { color: theme.text }]}>{guide.name}</Text>
               {guide.verified && <ShieldCheck size={16} color={theme.accent} />}
             </View>
-            <Text style={[styles.guideSpecialty, { color: theme.subtext }]}>{guide.specialty}</Text>
+            <Text style={[styles.guideSpecialty, { color: subtext }]}>{guide.specialty}</Text>
             {!!guide.location && (
-              <Text style={[styles.guideLocation, { color: theme.subtext }]}>{guide.location}</Text>
+              <Text style={[styles.guideLocation, { color: subtext }]}>{guide.location}</Text>
             )}
 
             {guide.rating != null && (
               <View style={styles.ratingRow}>
                 <Star size={14} color={theme.accent} fill={theme.accent} />
-                <Text style={[styles.ratingText, { color: theme.subtext }]}>
+                <Text style={[styles.ratingText, { color: subtext }]}>
                   {guide.rating}
                   {guide.reviews != null ? ` (${guide.reviews} reviews)` : ''}
                 </Text>
@@ -112,8 +124,8 @@ const GuideList = ({ spot, theme }) => {
                 style={[styles.contactBtn, { backgroundColor: theme.accent }]}
                 onPress={() => handleBook(guide.contact)}
               >
-                <Phone size={14} color="#000" />
-                <Text style={styles.contactBtnText}>Book Guide</Text>
+                <Phone size={14} color={full.primaryForeground} />
+                <Text style={[styles.contactBtnText, { color: full.primaryForeground }]}>Call Guide</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -127,26 +139,28 @@ const styles = StyleSheet.create({
   sectionHeader: {
     fontSize: 13,
     fontWeight: 'bold',
-    marginBottom: 15,
+    marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
+  disclaimer: { fontSize: 12, lineHeight: 17, marginBottom: 12 },
   guideCard: {
-    borderRadius: 18,
+    borderRadius: 16,
     padding: 12,
     flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 10,
     borderWidth: 1,
   },
-  guideImg: { width: 100, height: 100, borderRadius: 14 },
+  guideImg: { width: 84, height: 84, borderRadius: 12 },
   guideInitials: { justifyContent: 'center', alignItems: 'center' },
-  guideInitialsText: { fontSize: 36, fontWeight: '900' },
-  guideInfo: { flex: 1, marginLeft: 15, justifyContent: 'center' },
+  guideInitialsText: { fontSize: 30, fontWeight: '900' },
+  guideInfo: { flex: 1, flexShrink: 1, marginLeft: 12, justifyContent: 'center' },
   verifyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  guideName: { fontSize: 17, fontWeight: 'bold' },
+  guideName: { fontSize: 15, fontWeight: 'bold', flexShrink: 1 },
   guideSpecialty: { fontSize: 12, marginTop: 2 },
   guideLocation: { fontSize: 11, marginTop: 2 },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 8, gap: 4 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 6, gap: 4 },
   ratingText: { fontSize: 12 },
   contactBtn: {
     flexDirection: 'row',
@@ -157,7 +171,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     gap: 6,
   },
-  contactBtnText: { color: '#000', fontWeight: 'bold', fontSize: 13 },
+  contactBtnText: { fontWeight: 'bold', fontSize: 13 },
   emptyCard: {
     alignItems: 'center',
     padding: 30,

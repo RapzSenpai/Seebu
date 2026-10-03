@@ -1,37 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Image, 
-  ScrollView, 
-  Linking, 
-  Alert, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  ScrollView,
+  Linking,
+  Alert,
   Platform,
   ActivityIndicator,
-  Dimensions,
-  useColorScheme,
-  Appearance
 } from 'react-native';
-import { 
-  Bus, 
-  MapPin, 
-  Phone, 
-  ShieldCheck, 
-  Clock, 
-  Navigation, 
+import {
+  Bus,
+  MapPin,
+  Phone,
+  ShieldCheck,
+  Clock,
+  Navigation,
   ChevronLeft,
   Star,
+  Bookmark,
   Settings,
   Map as MapIcon
 } from 'lucide-react-native';
 // NOTE: Location is not supported on web, so we skip the import and location tracking
 import { useTheme } from '../ThemeContext';
+import { useColorScheme } from '../lib/useColorScheme';
 import GuideList from '../components/GuideList';
+import SpotGallery from '../components/SpotGallery';
+import ReviewComposer from '../components/ReviewComposer';
+import BottomSheetModal from '../components/BottomSheetModal';
+import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { Section, FactRow, Stars, ReviewCard, EmptyState } from '../components/SpotInfo';
 import { router, useLocalSearchParams } from 'expo-router';
-
-const { width } = Dimensions.get('window');
+import { auth } from '../firebase';
+import { useUser } from '../UserContext';
+import { useReviewStats } from '../utils/useReviewStats';
+import { useSavedPlaces } from '../utils/useSavedPlaces';
 
 const DEFAULT_SPOT = {
   id: 1,
@@ -62,32 +68,48 @@ function parseSpotParam(raw) {
 const SpotDetailScreen = () => {
   const params = useLocalSearchParams();
   const mapRef = useRef(null);
-  const systemColorScheme = useColorScheme();
-  
-  // State for manual theme override (this allows 'settings' to work)
-  // In a real app, this might come from Redux, Context, or AsyncStorage
-  const [userThemeSetting, setUserThemeSetting] = useState(null); // 'light' | 'dark' | null (system)
+  const { colors, isDarkMode } = useTheme();
+  const { colors: full } = useColorScheme();
 
-  // Determine actual theme based on user setting or system preference
-  const isDarkMode = userThemeSetting ? userThemeSetting === 'dark' : systemColorScheme === 'dark';
-
-  // Dynamic Theme Colors
+  // Token-built adapter for GuideList (expects subtext key).
   const theme = {
-    background: isDarkMode ? '#080808' : '#F5F5F7',
-    card: isDarkMode ? '#111' : '#FFFFFF',
-    text: isDarkMode ? '#FFF' : '#000',
-    subtext: isDarkMode ? '#666' : '#8E8E93',
-    border: isDarkMode ? '#1a1a1a' : '#E5E5EA',
-    tabBar: isDarkMode ? '#111' : '#EFEFF4',
-    iconBox: isDarkMode ? '#1a1a1a' : '#F2F2F7',
-    instruction: isDarkMode ? '#1a1a1a' : '#F9F9FB',
-    accent: '#f7f200'
+    background: colors.background,
+    card: colors.card,
+    text: colors.text,
+    subtext: colors.subText,
+    subText: colors.subText,
+    accent: colors.accent,
+    border: colors.border,
+    tabBar: colors.card,
+    iconBox: full.muted,
+    instruction: full.muted,
   };
-  
+
   // Data Extraction from Route Params
   const spot = parseSpotParam(params.spot);
 
-  const [activeTab, setActiveTab] = useState('route'); 
+  // Real reviews: stats + own review for the composer.
+  const { stats, listFor, refresh: refreshReviews } = useReviewStats();
+  const { profile } = useUser();
+  const uid = auth.currentUser?.uid;
+  const displayName =
+    profile?.displayName ||
+    auth.currentUser?.displayName ||
+    auth.currentUser?.email?.split('@')[0] ||
+    'Traveller';
+  const ownReview = uid ? listFor(spot.id).find((r) => r.uid === uid) ?? null : null;
+  const { isSaved, toggleSave, busy: saveBusy } = useSavedPlaces();
+  const heroSaved = isSaved(spot.id);
+  const realStat = stats[Number(spot.id)] ?? null;
+  const realList = listFor(spot.id);
+  const heroRating = realStat
+    ? { value: realStat.avg, count: realStat.count }
+    : spot.rating != null
+      ? { value: spot.rating, count: spot.reviewsCount ?? null }
+      : null;
+  const [reviewsOpen, setReviewsOpen] = useState(false);
+
+  const [activeTab, setActiveTab] = useState('route');
   const [distance, setDistance] = useState(null);
   const [loadingLoc, setLoadingLoc] = useState(false);
 
@@ -108,153 +130,332 @@ const SpotDetailScreen = () => {
     }
   };
 
-  // Toggle Function for "Settings"
-  const toggleTheme = () => {
-    setUserThemeSetting(prev => (prev === 'dark' ? 'light' : 'dark'));
+  // Gear opens real Settings (theme toggle lives there, not here).
+  const openSettings = () => {
+    router.push('/(tabs)/settings');
   };
 
+  const activeTabFg = full.accentForeground;
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* HEADER SECTION */}
       <View style={styles.imageContainer}>
-        <Image source={{ uri: spot.img }} style={styles.headerImage} />
-        <View style={styles.overlay} />
-        
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <ChevronLeft color="#fff" size={28} />
+        <SpotGallery img={spot.img} photos={spot.photos} />
+        <View style={[styles.overlayBase, { backgroundColor: full.foreground, opacity: 0.5 }]} />
+
+        <TouchableOpacity style={[styles.backBtnBase, { backgroundColor: full.muted }]} onPress={() => router.back()}>
+          <ChevronLeft color={full.foreground} size={28} />
         </TouchableOpacity>
 
-        {/* MOCK SETTINGS TOGGLE (Top Right) */}
-        <TouchableOpacity style={styles.settingsBtn} onPress={toggleTheme}>
-          <Settings color="#fff" size={24} />
+        {/* SAVE (Top Right) */}
+        <TouchableOpacity
+          style={[styles.backBtnBase, styles.savedPos, { backgroundColor: full.muted }, saveBusy && { opacity: 0.6 }]}
+          onPress={() => toggleSave(spot.id)}
+          disabled={saveBusy}
+        >
+          <Bookmark
+            color={heroSaved ? colors.accent : full.foreground}
+            fill={heroSaved ? colors.accent : 'transparent'}
+            size={22}
+          />
+        </TouchableOpacity>
+
+        {/* SETTINGS (Top Right) */}
+        <TouchableOpacity style={[styles.backBtnBase, styles.settingsPos, { backgroundColor: full.muted }]} onPress={openSettings}>
+          <Settings color={full.foreground} size={24} />
         </TouchableOpacity>
 
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>{spot.title}</Text>
+          <Text style={[styles.headerTitle, { color: full.primaryForeground }]} numberOfLines={2}>{spot.title}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <MapPin size={16} color={theme.accent} />
-            <Text style={[styles.headerLoc, { color: theme.accent }]}> {spot.loc}</Text>
+            <MapPin size={16} color={full.primaryForeground} />
+            <Text style={[styles.headerLoc, { color: full.primaryForeground }]}> {spot.loc}</Text>
           </View>
         </View>
       </View>
 
+      {/* INFO STRIP — rating + expense overlapping hero bottom */}
+      <View style={[styles.infoStrip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        {heroRating ? (
+          <View style={styles.infoItemFirst}>
+            <Text style={[styles.infoLabel, { color: colors.subText }]}>Rating</Text>
+            <View style={styles.infoValueRow}>
+              <Star size={13} color={colors.accent} fill={colors.accent} />
+              <Text style={[styles.infoValue, { color: colors.text }]}>
+                {heroRating.value.toFixed(1)}
+                {heroRating.count != null ? <Text style={[styles.infoSub, { color: colors.subText }]}> ({heroRating.count})</Text> : null}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        <View style={[styles.infoItem, spot.rating == null && styles.infoItemFirst, { borderColor: colors.border }]}>
+          <Text style={[styles.infoLabel, { color: colors.subText }]}>Est. travel</Text>
+          <Text style={[styles.infoValue, { color: colors.text }]} numberOfLines={1}>{spot.estimatedExpense || '₱200–₱500'}</Text>
+        </View>
+        <View style={[styles.infoItem, { borderColor: colors.border }]}>
+          <Text style={[styles.infoLabel, { color: colors.subText }]}>Category</Text>
+          <Text style={[styles.infoValue, { color: colors.text }]} numberOfLines={1}>{spot.type || 'Spot'}</Text>
+        </View>
+      </View>
+
       {/* TABS COMPONENT */}
-      <View style={[styles.tabBar, { backgroundColor: theme.tabBar }]}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'route' && { backgroundColor: theme.accent }]} 
+      <View style={[styles.tabBar, { backgroundColor: theme.tabBar, shadowColor: '#000' }]}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'route' && { backgroundColor: colors.accent }]}
           onPress={() => setActiveTab('route')}
         >
-          <Navigation size={18} color={activeTab === 'route' ? "#000" : theme.subtext} />
-          <Text style={[styles.tabText, { color: activeTab === 'route' ? "#000" : theme.subtext }]}>Route</Text>
+          <Navigation size={14} color={activeTab === 'route' ? activeTabFg : colors.subText} />
+          <Text numberOfLines={1} style={[styles.tabText, { color: activeTab === 'route' ? activeTabFg : colors.subText }]}>Route</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'guides' && { backgroundColor: theme.accent }]} 
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'details' && { backgroundColor: colors.accent }]}
+          onPress={() => setActiveTab('details')}
+        >
+          <Star size={14} color={activeTab === 'details' ? activeTabFg : colors.subText} />
+          <Text numberOfLines={1} style={[styles.tabText, { color: activeTab === 'details' ? activeTabFg : colors.subText }]}>Details</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'guides' && { backgroundColor: colors.accent }]}
           onPress={() => setActiveTab('guides')}
         >
-          <ShieldCheck size={18} color={activeTab === 'guides' ? "#000" : theme.subtext} />
-          <Text style={[styles.tabText, { color: activeTab === 'guides' ? "#000" : theme.subtext }]}>Local Guides</Text>
+          <ShieldCheck size={14} color={activeTab === 'guides' ? activeTabFg : colors.subText} />
+          <Text numberOfLines={1} style={[styles.tabText, { color: activeTab === 'guides' ? activeTabFg : colors.subText }]}>Local Guides</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} removeClippedSubviews>
         {activeTab === 'route' ? (
           <>
             {/* LIVE TRACKING CARD - WEB VERSION (no map) */}
-            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.cardHeader}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>Location Information</Text>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Location Information</Text>
               </View>
 
-              <View style={[styles.miniMapContainer, { backgroundColor: theme.iconBox }]}>
+              <View style={[styles.miniMapContainer, { backgroundColor: full.muted }]}>
                 <View style={styles.mapPlaceholder}>
-                  <MapIcon size={48} color={theme.subtext} />
-                  <Text style={[styles.mapPlaceholderText, { color: theme.text, marginTop: 12 }]}>View on Web</Text>
-                  <Text style={[styles.mapPlaceholderSubText, { color: theme.subtext }]}>Click "Open Map" to view the location</Text>
+                  <MapIcon size={48} color={colors.subText} />
+                  <Text style={[styles.mapPlaceholderText, { color: colors.text, marginTop: 12 }]}>View on Web</Text>
+                  <Text style={[styles.mapPlaceholderSubText, { color: colors.subText }]}>Click "Open Map" to view the location</Text>
                 </View>
               </View>
 
               <View style={styles.distanceRow}>
                 <View>
-                  <Text style={[styles.distanceLabel, { color: theme.subtext }]}>Coordinates</Text>
-                  <Text style={[styles.distanceValue, { color: theme.text }]}>
+                  <Text style={[styles.distanceLabel, { color: colors.subText }]}>Coordinates</Text>
+                  <Text style={[styles.distanceValue, { color: colors.text }]}>
                     {spot.coords ? `${spot.coords.latitude.toFixed(4)}, ${spot.coords.longitude.toFixed(4)}` : "N/A"}
                   </Text>
                 </View>
-                <TouchableOpacity style={[styles.navBtn, { backgroundColor: theme.accent }]} onPress={handleOpenMaps}>
-                  <Navigation color="#000" size={18} />
-                  <Text style={styles.navBtnText}>Open Map</Text>
+                <TouchableOpacity style={[styles.navBtn, { backgroundColor: colors.accent }]} onPress={handleOpenMaps}>
+                  <Navigation color={full.accentForeground} size={18} />
+                  <Text style={[styles.navBtnText, { color: full.accentForeground }]}>Open Map</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-              <Text style={[styles.cardTitle, { marginBottom: 10, color: theme.text }]}>Estimated Travel Expense</Text>
-              <View style={[styles.expenseBox, { backgroundColor: isDarkMode ? 'rgba(247, 242, 0, 0.12)' : 'rgba(0, 0, 0, 0.04)' }]}> 
-                <Text style={[styles.expenseText, { color: theme.text }]}>{spot.estimatedExpense || '₱200–₱500'}</Text>
-              </View>
-            </View>
-
             {/* PUBLIC TRANSPORT GUIDE */}
-            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[styles.cardTitle, {marginBottom: 15, color: theme.text}]}>Public Transport</Text>
-              
+            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { marginBottom: 15, color: colors.text }]}>Public Transport</Text>
+
               <View style={styles.transportRow}>
-                <View style={[styles.iconBox, { backgroundColor: theme.iconBox }]}><Bus color={isDarkMode ? theme.accent : '#555'} size={20} /></View>
-                <View style={{flex: 1}}>
-                  <Text style={[styles.transportLabel, { color: theme.subtext }]}>Terminal & Bus</Text>
-                  <Text style={[styles.transportValue, { color: theme.text }]}>{spot.transport?.terminal}</Text>
+                <View style={[styles.iconBox, { backgroundColor: full.muted }]}><Bus color={isDarkMode ? colors.accent : colors.subText} size={20} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.transportLabel, { color: colors.subText }]}>Terminal & Bus</Text>
+                  <Text style={[styles.transportValue, { color: colors.text }]}>{spot.transport?.terminal}</Text>
                 </View>
               </View>
 
               <View style={styles.transportRow}>
-                <View style={[styles.iconBox, { backgroundColor: theme.iconBox }]}><Clock color={isDarkMode ? theme.accent : '#555'} size={20} /></View>
-                <View style={{flex: 1}}>
-                  <Text style={[styles.transportLabel, { color: theme.subtext }]}>Fare & Frequency</Text>
-                  <Text style={[styles.transportValue, { color: theme.text }]}>{spot.transport?.fare} • {spot.transport?.schedule}</Text>
+                <View style={[styles.iconBox, { backgroundColor: full.muted }]}><Clock color={isDarkMode ? colors.accent : colors.subText} size={20} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.transportLabel, { color: colors.subText }]}>Fare & Frequency</Text>
+                  <Text style={[styles.transportValue, { color: colors.text }]}>{spot.transport?.fare} • {spot.transport?.schedule}</Text>
                 </View>
               </View>
 
               {spot.transport?.options?.map((option, index) => (
-                <View key={`${option.vehicle}-${index}`} style={[styles.optionBox, { backgroundColor: isDarkMode ? '#1c1c1c' : '#f7f7f7' }]}> 
-                  <Text style={[styles.optionTitle, { color: theme.text }]}>{option.vehicle}</Text>
-                  <Text style={[styles.optionMeta, { color: theme.subtext }]}>Fare: {option.fare}</Text>
-                  <Text style={[styles.optionMeta, { color: theme.subtext }]}>Frequency: {option.frequency}</Text>
+                <View key={`${option.vehicle}-${index}`} style={[styles.optionBox, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+                  <Text style={[styles.optionTitle, { color: colors.text }]}>{option.vehicle}</Text>
+                  <Text style={[styles.optionMeta, { color: colors.subText }]}>Fare: {option.fare}</Text>
+                  <Text style={[styles.optionMeta, { color: colors.subText }]}>Frequency: {option.frequency}</Text>
                 </View>
               ))}
 
-              <View style={[styles.instructionBox, { backgroundColor: theme.instruction }]}>
-                <Text style={[styles.instructionTitle, { color: isDarkMode ? theme.accent : '#000' }]}>Arrival Instructions:</Text>
-                <Text style={[styles.instructionText, { color: isDarkMode ? '#aaa' : '#444' }]}>{spot.transport?.instructions}</Text>
+              <View style={[styles.instructionBox, { backgroundColor: full.muted }]}>
+                <Text style={[styles.instructionTitle, { color: isDarkMode ? colors.accent : colors.text }]}>Arrival Instructions:</Text>
+                <Text style={[styles.instructionText, { color: colors.subText }]}>{spot.transport?.instructions}</Text>
               </View>
             </View>
+          </>
+        ) : activeTab === 'details' ? (
+          <>
+            <Section title="About" colors={colors} full={full}>
+              <Text style={{ color: colors.text, lineHeight: 24, fontSize: 15 }}>
+                {spot.longDesc || spot.desc}
+              </Text>
+            </Section>
+
+            <Section title="Location" colors={colors} full={full}>
+              <FactRow label="Address" value={spot.address} colors={colors} />
+              <FactRow label="Getting there" value={spot.howToGetThere} colors={colors} />
+              {spot.coords && (
+                <Text style={{ color: colors.subText, fontSize: 13 }}>
+                  {`${spot.coords.latitude.toFixed(4)}, ${spot.coords.longitude.toFixed(4)}`}
+                </Text>
+              )}
+              {!spot.address && !spot.howToGetThere && (
+                <EmptyState text={spot.loc} colors={colors} />
+              )}
+            </Section>
+
+            <Section title="Hours & Fees" colors={colors} full={full}>
+              <FactRow label="Hours" value={spot.hours} colors={colors} />
+              <FactRow label="Fees" value={spot.fees} colors={colors} />
+              {!spot.hours && !spot.fees && (
+                <EmptyState text="Hours and fees not listed yet." colors={colors} />
+              )}
+            </Section>
+
+            <Section title="Tips" colors={colors} full={full}>
+              <FactRow label="Best time" value={spot.bestTime} colors={colors} />
+              <FactRow label="Duration" value={spot.duration} colors={colors} />
+              {(spot.tips || []).map((tip, i) => (
+                <Text key={i} style={{ color: colors.subText, fontSize: 14, lineHeight: 22, marginTop: 4 }}>
+                  {`\u2022 ${tip}`}
+                </Text>
+              ))}
+              {!spot.bestTime && !spot.duration && !(spot.tips || []).length && (
+                <EmptyState text="No tips yet." colors={colors} />
+              )}
+            </Section>
+
+            <Section title="Suggested Itinerary" colors={colors} full={full}>
+              {(spot.itinerary || []).map((step, i, arr) => (
+                <View key={i} style={styles.timelineRow}>
+                  <View style={styles.timelineRail}>
+                    <View style={[styles.timelineDot, { backgroundColor: colors.accent }]} />
+                    {i < arr.length - 1 && <View style={[styles.timelineLine, { backgroundColor: colors.border }]} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>{step.t}</Text>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginTop: 2 }}>{step.title}</Text>
+                    <Text style={{ color: colors.subText, fontSize: 13, lineHeight: 20 }}>{step.text}</Text>
+                  </View>
+                </View>
+              ))}
+              {!(spot.itinerary || []).length && (
+                <EmptyState text="No itinerary yet." colors={colors} />
+              )}
+            </Section>
+
+            {!!uid && (
+              <ReviewComposer
+                spotId={spot.id}
+                existing={ownReview}
+                uid={uid}
+                displayName={displayName}
+                colors={colors}
+                full={full}
+                onDone={refreshReviews}
+              />
+            )}
+            <Section title="Reviews" colors={colors} full={full}>
+              {realList.length > 0 ? (
+                <>
+                  <Stars value={realStat.avg} count={realStat.count} colors={colors} full={full} />
+                  <View style={{ height: 12 }} />
+                  {realList.slice(0, 2).map((r) => (
+                    <ReviewCard
+                      key={r.id ?? r.uid}
+                      review={{ n: r.displayName, r: r.rating, t: r.text }}
+                      colors={colors}
+                      full={full}
+                    />
+                  ))}
+                  <TouchableOpacity onPress={() => setReviewsOpen(true)} style={styles.moreBtn}>
+                    <Text style={[styles.moreText, { color: colors.accent }]}>
+                      View More Comments ({realList.length})
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Stars value={spot.rating} count={spot.reviewsCount} colors={colors} full={full} />
+                  <View style={{ height: 12 }} />
+                  {(spot.reviews || []).map((r, i) => (
+                    <ReviewCard key={i} review={r} colors={colors} full={full} />
+                  ))}
+                  {!(spot.reviews || []).length && (
+                    <EmptyState text="No reviews yet." colors={colors} />
+                  )}
+                </>
+              )}
+            </Section>
+            <View style={{ height: 40 }} />
           </>
         ) : (
           <>
             {/* GUIDES LIST — Firestore-backed, see components/GuideList.js */}
             <GuideList spot={spot} theme={theme} />
-            <View style={{height: 40}} />
+            <View style={{ height: 40 }} />
           </>
         )}
       </ScrollView>
+
+      {/* FULL REVIEW LIST */}
+      <BottomSheetModal
+        visible={reviewsOpen}
+        onClose={() => setReviewsOpen(false)}
+        title={`Reviews (${realList.length})`}
+        snapPoints={['85%']}
+        initialSnap={0}
+      >
+        <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+          {realList.map((r) => (
+            <ReviewCard
+              key={r.id ?? r.uid}
+              review={{ n: r.displayName, r: r.rating, t: r.text }}
+              colors={colors}
+              full={full}
+            />
+          ))}
+        </BottomSheetScrollView>
+      </BottomSheetModal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingBottom: 50 },
-  imageContainer: { height: 280, position: 'relative' },
+  imageContainer: { height: 320, position: 'relative' },
   headerImage: { width: '100%', height: '100%' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)' },
-  backBtn: { position: 'absolute', top: 50, left: 20, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 25 },
-  settingsBtn: { position: 'absolute', top: 50, right: 20, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 25 },
-  headerTextContainer: { position: 'absolute', bottom: 35, left: 20 },
-  headerTitle: { color: '#fff', fontSize: 32, fontWeight: '900' },
+  overlayBase: { ...StyleSheet.absoluteFillObject },
+  backBtnBase: { position: 'absolute', top: 50, left: 20, width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center' },
+  settingsPos: { left: undefined, right: 20 },
+  savedPos: { left: undefined, right: 68 },
+  headerTextContainer: { position: 'absolute', bottom: 52, left: 20, right: 20 },
+  headerTitle: { fontSize: 34, fontWeight: '900', letterSpacing: -0.3 },
   headerLoc: { fontWeight: 'bold', fontSize: 16 },
 
-  tabBar: { flexDirection: 'row', marginHorizontal: 20, borderRadius: 15, padding: 6, marginTop: -30, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
-  tab: { flex: 1, flexDirection: 'row', paddingVertical: 12, justifyContent: 'center', alignItems: 'center', borderRadius: 12, gap: 8 },
-  tabText: { fontWeight: 'bold' },
+  infoStrip: {
+    flexDirection: 'row', marginHorizontal: 20, borderRadius: 16, borderWidth: 1,
+    paddingVertical: 12, paddingHorizontal: 8, marginTop: -28, marginBottom: 14,
+    elevation: 6, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8,
+  },
+  infoItemFirst: { flex: 1, paddingHorizontal: 8 },
+  infoItem: { flex: 1, paddingHorizontal: 8, borderLeftWidth: 1 },
+  infoLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3 },
+  infoValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  infoValue: { fontSize: 14, fontWeight: '800' },
+  infoSub: { fontSize: 11, fontWeight: '600' },
+
+  tabBar: { flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center', marginHorizontal: 20, borderRadius: 16, paddingVertical: 5, paddingHorizontal: 4, elevation: 2, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  tab: { flexDirection: 'row', minWidth: 88, paddingVertical: 8, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderRadius: 12, gap: 5 },
+  tabText: { fontWeight: '700', fontSize: 11.5 },
 
   content: { paddingHorizontal: 20, paddingTop: 20 },
   card: { borderRadius: 20, padding: 20, marginBottom: 20, borderWidth: 1 },
@@ -273,8 +474,8 @@ const styles = StyleSheet.create({
   distanceValue: { fontSize: 22, fontWeight: '900' },
   expenseBox: { padding: 12, borderRadius: 12 },
   expenseText: { fontSize: 15, fontWeight: '700' },
-  navBtn: { flexDirection: 'row', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, alignItems: 'center', gap: 8 },
-  navBtnText: { fontWeight: 'bold', color: '#000' },
+  navBtn: { flexDirection: 'row', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 16, alignItems: 'center', gap: 8 },
+  navBtnText: { fontWeight: 'bold' },
 
   transportRow: { flexDirection: 'row', marginBottom: 15, alignItems: 'center' },
   iconBox: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
@@ -287,6 +488,13 @@ const styles = StyleSheet.create({
   instructionTitle: { fontWeight: 'bold', marginBottom: 6, fontSize: 13 },
   instructionText: { lineHeight: 20, fontSize: 13 },
 
+  moreBtn: { marginTop: 8, paddingVertical: 10, alignItems: 'center' },
+  moreText: { fontWeight: '800', fontSize: 14 },
+  timelineRow: { flexDirection: 'row', marginBottom: 4 },
+  timelineRail: { width: 20, alignItems: 'center', marginRight: 10 },
+  timelineDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
+  timelineLine: { width: 2, flex: 1, minHeight: 24, marginTop: 4 },
+
   sectionHeader: { fontSize: 13, fontWeight: 'bold', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 1 },
   guideCard: { borderRadius: 18, padding: 12, flexDirection: 'row', marginBottom: 15, borderWidth: 1 },
   guideImg: { width: 100, height: 100, borderRadius: 14 },
@@ -297,7 +505,7 @@ const styles = StyleSheet.create({
   ratingRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 8, gap: 4 },
   ratingText: { fontSize: 12 },
   contactBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, alignSelf: 'flex-start', gap: 6 },
-  contactBtnText: { color: '#000', fontWeight: 'bold', fontSize: 13 }
+  contactBtnText: { fontWeight: 'bold', fontSize: 13 }
 });
 
 export default SpotDetailScreen;

@@ -1,24 +1,29 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  KeyboardAvoidingView, 
-  Platform, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
   Alert,
   ActivityIndicator,
   ScrollView
 } from 'react-native';
-import { auth, db, createUserWithEmailAndPassword, signOut } from '../firebase'; 
+import { auth, db, createUserWithEmailAndPassword, signOut } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { Mail, Lock, User, CheckCircle2, ArrowRight } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { useTheme } from '../ThemeContext';
+import { useColorScheme } from '../lib/useColorScheme';
+import IslandBackground from '../components/IslandBackground';
 
 const INTEREST_OPTIONS = ["Beaches", "Food", "History", "Nightlife", "Mountains", "Shopping"];
 
 const RegisterScreen = () => {
+  const { colors } = useTheme();
+  const { colors: full } = useColorScheme();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -72,27 +77,32 @@ const RegisterScreen = () => {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
     >
+      <IslandBackground />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoText}>S</Text>
+          <View style={[styles.logoBadge, { backgroundColor: colors.accent }]}>
+            <Text style={[styles.logoText, { color: full.accentForeground }]}>S</Text>
           </View>
-          <Text style={styles.title}>Join SeeBu</Text>
-          <Text style={styles.subtitle}>Create an account to explore Cebu.</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Join SeeBu</Text>
+          <Text style={[styles.subtitle, { color: colors.subText }]}>Create an account to explore Cebu.</Text>
         </View>
 
         <View style={styles.form}>
           {/* Name Input */}
-          <View style={[styles.inputContainer, focusedInput === 'name' && styles.inputFocused]}>
-            <User color={focusedInput === 'name' ? "#f7f200" : "#666"} size={20} />
-            <TextInput 
-              placeholder="Full Name" 
-              placeholderTextColor="#555"
-              style={styles.input}
+          <View style={[
+            styles.inputContainer,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            focusedInput === 'name' && { borderColor: colors.accent, backgroundColor: full.muted }
+          ]}>
+            <User color={focusedInput === 'name' ? colors.accent : colors.subText} size={20} />
+            <TextInput
+              placeholder="Full Name"
+              placeholderTextColor={colors.subText}
+              style={[styles.input, { color: colors.text }]}
               value={name}
               onChangeText={setName}
               onFocus={() => setFocusedInput('name')}
@@ -101,12 +111,16 @@ const RegisterScreen = () => {
           </View>
 
           {/* Email Input */}
-          <View style={[styles.inputContainer, focusedInput === 'email' && styles.inputFocused]}>
-            <Mail color={focusedInput === 'email' ? "#f7f200" : "#666"} size={20} />
-            <TextInput 
-              placeholder="Email Address" 
-              placeholderTextColor="#555"
-              style={styles.input}
+          <View style={[
+            styles.inputContainer,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            focusedInput === 'email' && { borderColor: colors.accent, backgroundColor: full.muted }
+          ]}>
+            <Mail color={focusedInput === 'email' ? colors.accent : colors.subText} size={20} />
+            <TextInput
+              placeholder="Email Address"
+              placeholderTextColor={colors.subText}
+              style={[styles.input, { color: colors.text }]}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -117,12 +131,16 @@ const RegisterScreen = () => {
           </View>
 
           {/* Password Input */}
-          <View style={[styles.inputContainer, focusedInput === 'password' && styles.inputFocused]}>
-            <Lock color={focusedInput === 'password' ? "#f7f200" : "#666"} size={20} />
-            <TextInput 
-              placeholder="Password" 
-              placeholderTextColor="#555"
-              style={styles.input}
+          <View style={[
+            styles.inputContainer,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            focusedInput === 'password' && { borderColor: colors.accent, backgroundColor: full.muted }
+          ]}>
+            <Lock color={focusedInput === 'password' ? colors.accent : colors.subText} size={20} />
+            <TextInput
+              placeholder="Password"
+              placeholderTextColor={colors.subText}
+              style={[styles.input, { color: colors.text }]}
               secureTextEntry
               value={password}
               onChangeText={setPassword}
@@ -132,47 +150,49 @@ const RegisterScreen = () => {
           </View>
 
           {/* Interests Section */}
-          <Text style={styles.sectionTitle}>What interests you?</Text>
+          <Text style={[styles.sectionTitle, { color: colors.accent }]}>What interests you?</Text>
           <View style={styles.interestContainer}>
             {INTEREST_OPTIONS.map((interest) => (
-              <TouchableOpacity 
+              <TouchableOpacity
                 key={interest}
                 onPress={() => toggleInterest(interest)}
                 style={[
                   styles.interestChip,
-                  selectedInterests.includes(interest) && styles.interestChipSelected
+                  { borderColor: colors.border, backgroundColor: colors.card },
+                  selectedInterests.includes(interest) && { backgroundColor: colors.accent, borderColor: colors.accent }
                 ]}
               >
                 <Text style={[
                   styles.interestText,
-                  selectedInterests.includes(interest) && styles.interestTextSelected
+                  { color: colors.subText },
+                  selectedInterests.includes(interest) && { color: full.accentForeground }
                 ]}>{interest}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <TouchableOpacity 
-            style={[styles.button, loading && { opacity: 0.7 }]} 
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: colors.accent }, loading && { opacity: 0.7 }]}
             onPress={handleRegister}
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color={full.accentForeground} />
             ) : (
               <View style={styles.buttonInner}>
-                <Text style={styles.buttonText}>Register</Text>
-                <CheckCircle2 color="#000" size={20} />
+                <Text style={[styles.buttonText, { color: full.accentForeground }]}>Register</Text>
+                <CheckCircle2 color={full.accentForeground} size={20} />
               </View>
             )}
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => router.replace('/login')}
           style={styles.footerLink}
         >
-          <Text style={styles.footerText}>
-            Already a member? <Text style={styles.link}>Sign In</Text>
+          <Text style={[styles.footerText, { color: colors.subText }]}>
+            Already a member? <Text style={[styles.link, { color: colors.accent }]}>Sign In</Text>
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -181,66 +201,57 @@ const RegisterScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080808', paddingTop: 70 },
+  container: { flex: 1, paddingTop: 70 },
   scrollContent: { flexGrow: 1, padding: 25, paddingVertical: 50 },
   header: { alignItems: 'center', marginBottom: 35 },
-  logoBadge: { 
-    width: 50, 
-    height: 50, 
-    backgroundColor: '#f7f200', 
-    borderRadius: 15, 
-    justifyContent: 'center', 
+  logoBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 15,
+    justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 15,
     transform: [{ rotate: '-10deg' }]
   },
-  logoText: { fontSize: 28, fontWeight: '900', color: '#000' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff' },
-  subtitle: { fontSize: 15, color: '#666', marginTop: 5 },
-  
+  logoText: { fontSize: 28, fontWeight: '900' },
+  title: { fontSize: 28, fontWeight: '900' },
+  subtitle: { fontSize: 15, marginTop: 5 },
+
   form: { width: '100%' },
-  inputContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#121212', 
-    borderRadius: 16, 
-    marginBottom: 16, 
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    marginBottom: 16,
     paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: '#1a1a1a',
     height: 60
   },
-  inputFocused: { borderColor: '#f7f200', backgroundColor: '#161616' },
-  input: { flex: 1, color: '#fff', marginLeft: 12, fontSize: 16 },
+  input: { flex: 1, marginLeft: 12, fontSize: 16 },
 
-  sectionTitle: { color: '#f7f200', fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 15, marginBottom: 15 },
+  sectionTitle: { fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 15, marginBottom: 15 },
   interestContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 30 },
-  interestChip: { 
-    paddingHorizontal: 16, 
-    paddingVertical: 10, 
-    borderRadius: 20, 
-    borderWidth: 1, 
-    borderColor: '#222',
-    backgroundColor: '#111'
+  interestChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
   },
-  interestChipSelected: { backgroundColor: '#f7f200', borderColor: '#f7f200' },
-  interestText: { color: '#888', fontWeight: '600', fontSize: 13 },
-  interestTextSelected: { color: '#000' },
-  
-  button: { 
-    backgroundColor: '#f7f200', 
-    height: 60, 
-    borderRadius: 16, 
-    justifyContent: 'center', 
+  interestText: { fontWeight: '600', fontSize: 13 },
+
+  button: {
+    height: 60,
+    borderRadius: 16,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10
   },
   buttonInner: { flexDirection: 'row', alignItems: 'center' },
-  buttonText: { color: '#000', fontWeight: '800', fontSize: 18, marginRight: 8 },
-  
+  buttonText: { fontWeight: '800', fontSize: 18, marginRight: 8 },
+
   footerLink: { marginTop: 30 },
-  footerText: { color: '#666', textAlign: 'center', fontSize: 15 },
-  link: { color: '#f7f200', fontWeight: '800' }
+  footerText: { textAlign: 'center', fontSize: 15 },
+  link: { fontWeight: '800' }
 });
 
 export default RegisterScreen;

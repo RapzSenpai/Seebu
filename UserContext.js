@@ -12,6 +12,31 @@ export const UserProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // ponytail: reloadable so profile edits propagate app-wide instead of
+  // going stale until next login.
+  const refresh = async () => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const snap = await getDoc(userRef);
+      const stored = snap.exists() ? snap.data() : null;
+      const resolvedRole = stored?.role || 'user';
+
+      setRole(resolvedRole);
+      // Expose the stored user document (interests, avatar, notification
+      // preference, ...) so screens can render real data instead of
+      // hardcoded placeholders.
+      setProfile({
+        ...(stored || {}),
+        uid: user.uid,
+        email: user.email,
+        role: resolvedRole,
+      });
+    } catch {
+      // Keep last good snapshot on transient failures.
+    }
+  };
+
   useEffect(() => {
     if (!user) {
       setRole('user');
@@ -19,36 +44,12 @@ export const UserProvider = ({ children }) => {
       setLoading(false);
       return;
     }
-
-    const loadRole = async () => {
-      try {
-        const userRef = doc(db, 'users', user.uid);
-        const snap = await getDoc(userRef);
-        const stored = snap.exists() ? snap.data() : null;
-        const resolvedRole = stored?.role || 'user';
-
-        setRole(resolvedRole);
-        // Expose the stored user document (interests, avatar, notification
-        // preference, ...) so screens can render real data instead of
-        // hardcoded placeholders.
-        setProfile({
-          ...(stored || {}),
-          uid: user.uid,
-          email: user.email,
-          role: resolvedRole,
-        });
-      } catch {
-        setRole('user');
-        setProfile({ uid: user.uid, email: user.email, role: 'user' });
-      }
-      setLoading(false);
-    };
-
-    loadRole();
-  }, [user]);
+    setLoading(true);
+    refresh().finally(() => setLoading(false));
+  }, [user?.uid]);
 
   return (
-    <UserContext.Provider value={{ role, isAdmin: role === 'admin', profile, loading }}>
+    <UserContext.Provider value={{ role, isAdmin: role === 'admin', profile, loading, refresh }}>
       {children}
     </UserContext.Provider>
   );

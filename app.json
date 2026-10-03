@@ -11,7 +11,14 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SeeBu uses your location to show distance and routes to Cebu destinations.",
+          "locationAlwaysAndWhenInUsePermission": "SeeBu uses your location to show distance and routes to Cebu destinations."
+        }
+      ]
     ],
     "splash": {
       "image": "./assets/splash-icon.png",
