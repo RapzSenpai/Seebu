@@ -69,22 +69,55 @@ const MapComponent = ({ spots = [], onSpotPress }) => {
   const [mapReady, setMapReady] = useState(false);
   const fittedRef = useRef(false);
 
+  // Fresh fix with a hard timeout (never hangs the recenter button, the
+  // route fetch, or distances), then last-known as fallback — a slightly
+  // stale pin beats missing location UI. Permission flow unchanged.
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (cancelled) return;
       if (status !== 'granted') {
         setLocDenied(true);
         return;
       }
+      const fresh = Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      // A late fresh fix still wins: attach first so the timeout race never
+      // swallows a good GPS result that arrives after the fallback. Same
+      // state path, guarded against post-unmount updates.
+      fresh.then((p) => {
+        if (!cancelled && p?.coords) setUserLoc(p.coords);
+      }).catch(() => {});
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('gps-timeout')), 10000)
+      );
+      let pos = null;
       try {
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        setUserLoc(pos.coords);
+        pos = await Promise.race([fresh, timeout]);
       } catch {
-        setLocDenied(true);
+        pos = null;
       }
+      if (!pos) {
+        // Stale pins lie: reject cached fixes older than 5 min or wider
+        // than 100 m, or the map would route from the wrong place.
+        try {
+          pos = await Location.getLastKnownPositionAsync({
+            maxAge: 5 * 60 * 1000,
+            requiredAccuracy: 100,
+          });
+        } catch {
+          pos = null;
+        }
+      }
+      if (cancelled) return;
+      if (pos?.coords) setUserLoc(pos.coords);
+      else setLocDenied(true);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const types = useMemo(

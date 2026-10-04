@@ -337,6 +337,7 @@ export default function AdminSpots() {
             </View>
             {editing && (
               <SpotForm
+                key={editing._docId ?? editing.spotId ?? editing.id}
                 initial={editing}
                 onSubmit={handleSave}
                 submitLabel="Save"

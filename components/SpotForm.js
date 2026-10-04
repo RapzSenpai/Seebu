@@ -15,7 +15,22 @@ import AdminPhotoPicker from './AdminPhotoPicker';
 const TYPE_OPTIONS = ['Nature', 'Beach', 'History', 'Adventure'];
 const MAX_STOPS = 5;
 
-const blankStop = () => ({ t: '', title: '', text: '' });
+const blankStop = () => ({ id: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`, t: '', title: '', text: '' });
+
+// Module-level so its identity is stable across renders. Defined inside
+// SpotForm it would remount every contained TextInput on each keystroke,
+// dropping focus and dismissing the keyboard after the first character.
+const Field = ({ label, colors, inputStyle, busy, ...props }) => (
+  <View style={styles.field}>
+    <Text style={[styles.label, { color: colors.subText }]}>{label}</Text>
+    <TextInput
+      style={inputStyle}
+      placeholderTextColor={colors.subText}
+      editable={!busy}
+      {...props}
+    />
+  </View>
+);
 
 // Controlled admin form. Parent owns coords + publish; this owns field state
 // and hands back a parsed object via onSubmit.
@@ -54,6 +69,7 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
   const [stops, setStops] = useState(
     Array.isArray(src.itinerary) && src.itinerary.length
       ? src.itinerary.map((s) => ({
+          id: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
           t: s.t || '',
           title: s.title || '',
           text: s.text || '',
@@ -83,17 +99,7 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
     { color: colors.text, borderColor: colors.border, backgroundColor: full.background },
   ];
 
-  const Field = ({ label, ...props }) => (
-    <View style={styles.field}>
-      <Text style={[styles.label, { color: colors.subText }]}>{label}</Text>
-      <TextInput
-        style={inputStyle}
-        placeholderTextColor={colors.subText}
-        editable={!busy}
-        {...props}
-      />
-    </View>
-  );
+  const FieldProps = { colors, inputStyle, busy };
 
   const setStop = (i, key, value) =>
     setStops((prev) => prev.map((s, j) => (j === i ? { ...s, [key]: value } : s)));
@@ -140,7 +146,7 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
 
   return (
     <View>
-      <Field label="Title (required)" value={title} onChangeText={setTitle} placeholder="Spot name" />
+      <Field {...FieldProps} label="Title (required)" value={title} onChangeText={setTitle} placeholder="Spot name" />
       <View style={styles.field}>
         <Text style={[styles.label, { color: colors.subText }]}>Type</Text>
         <View style={styles.chips}>
@@ -180,9 +186,9 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
           placeholder="Or custom type"
         />
       </View>
-      <Field label="Location (required)" value={loc} onChangeText={setLoc} placeholder="Town or city" />
-      <Field label="Address" value={address} onChangeText={setAddress} placeholder="Full address" />
-      <Field label="Short description" value={desc} onChangeText={setDesc} placeholder="One-line summary" />
+      <Field {...FieldProps} label="Location (required)" value={loc} onChangeText={setLoc} placeholder="Town or city" />
+      <Field {...FieldProps} label="Address" value={address} onChangeText={setAddress} placeholder="Full address" />
+      <Field {...FieldProps} label="Short description" value={desc} onChangeText={setDesc} placeholder="One-line summary" />
       <View style={styles.field}>
         <Text style={[styles.label, { color: colors.subText }]}>Long description</Text>
         <TextInput
@@ -195,12 +201,12 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
           placeholder="Detailed write-up"
         />
       </View>
-      <Field label="Hours" value={hours} onChangeText={setHours} placeholder="6:00 AM - 5:00 PM daily" />
-      <Field label="Fees" value={fees} onChangeText={setFees} placeholder="Entrance fees" />
-      <Field label="Est. travel expense" value={expense} onChangeText={setExpense} placeholder="₱250–₱450" />
-      <Field label="How to get there" value={howTo} onChangeText={setHowTo} placeholder="Bus + tricycle to the entrance" />
-      <Field label="Best time" value={bestTime} onChangeText={setBestTime} placeholder="Dry season mornings" />
-      <Field label="Duration" value={duration} onChangeText={setDuration} placeholder="Half day" />
+      <Field {...FieldProps} label="Hours" value={hours} onChangeText={setHours} placeholder="6:00 AM - 5:00 PM daily" />
+      <Field {...FieldProps} label="Fees" value={fees} onChangeText={setFees} placeholder="Entrance fees" />
+      <Field {...FieldProps} label="Est. travel expense" value={expense} onChangeText={setExpense} placeholder="₱250–₱450" />
+      <Field {...FieldProps} label="How to get there" value={howTo} onChangeText={setHowTo} placeholder="Bus + tricycle to the entrance" />
+      <Field {...FieldProps} label="Best time" value={bestTime} onChangeText={setBestTime} placeholder="Dry season mornings" />
+      <Field {...FieldProps} label="Duration" value={duration} onChangeText={setDuration} placeholder="Half day" />
       <View style={styles.field}>
         <Text style={[styles.label, { color: colors.subText }]}>Tips (one per line)</Text>
         <TextInput
@@ -217,7 +223,7 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
         <Text style={[styles.label, { color: colors.subText }]}>Itinerary</Text>
         {stops.map((s, i) => (
           <View
-            key={i}
+            key={s.id}
             style={[styles.stop, { borderColor: colors.border, backgroundColor: colors.card }]}
           >
             <TextInput
@@ -278,9 +284,9 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
         onChange={setExtraPhotos}
         folder="seebu/spots"
       />
-      <Field label="Transport terminal" value={terminal} onChangeText={setTerminal} placeholder="South Bus Terminal (Cebu City)" />
-      <Field label="Transport fare" value={fare} onChangeText={setFare} placeholder="₱210–₱280" />
-      <Field label="Transport schedule" value={schedule} onChangeText={setSchedule} placeholder="Every 30 mins (3AM–9PM)" />
+      <Field {...FieldProps} label="Transport terminal" value={terminal} onChangeText={setTerminal} placeholder="South Bus Terminal (Cebu City)" />
+      <Field {...FieldProps} label="Transport fare" value={fare} onChangeText={setFare} placeholder="₱210–₱280" />
+      <Field {...FieldProps} label="Transport schedule" value={schedule} onChangeText={setSchedule} placeholder="Every 30 mins (3AM–9PM)" />
       <View style={styles.field}>
         <Text style={[styles.label, { color: colors.subText }]}>Transport instructions</Text>
         <TextInput
@@ -294,6 +300,7 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
         />
       </View>
       <Field
+        {...FieldProps}
         label="Rating (optional, 0-5)"
         value={ratingText}
         onChangeText={setRatingText}

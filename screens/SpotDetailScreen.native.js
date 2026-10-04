@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -23,10 +23,11 @@ import {
   Settings // Added for the settings toggle
 } from 'lucide-react-native';
 import * as Location from 'expo-location';
-import { Map, Camera, Marker } from '@maplibre/maplibre-react-native';
+import { Map, Camera, Marker, GeoJSONSource, Layer } from '@maplibre/maplibre-react-native';
 import { useTheme } from '../ThemeContext';
 import { useColorScheme } from '../lib/useColorScheme';
 import { mapStyleFor, lngLatOf } from '../utils/mapTiles';
+import { fetchRoute } from '../utils/routing';
 import GuideList from '../components/GuideList';
 import SpotGallery from '../components/SpotGallery';
 import ReviewComposer from '../components/ReviewComposer';
@@ -112,6 +113,8 @@ const SpotDetailScreen = () => {
 
   // 1. Initialize Location and Permissions (retryable: denied/GPS-off no
   // longer masquerades as endless loading — the placeholder says so).
+  // Fresh fix with a 10s timeout, then last-known fallback, same as the
+  // main map — a stale pin beats an eternal spinner. Permission flow kept.
   const loadLocation = async () => {
     setLoadingLoc(true);
     setLocDenied(false);
@@ -121,10 +124,36 @@ const SpotDetailScreen = () => {
         setLocDenied(true);
         return;
       }
-      const location = await Location.getCurrentPositionAsync({
+      const fresh = Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      setUserLocation(location.coords);
+      // A late fresh fix still wins over the cached fallback below.
+      fresh.then((p) => {
+        if (mountedRef.current && p?.coords) setUserLocation(p.coords);
+      }).catch(() => {});
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('gps-timeout')), 10000)
+      );
+      let location = null;
+      try {
+        location = await Promise.race([fresh, timeout]);
+      } catch {
+        location = null;
+      }
+      if (!location) {
+        // Same freshness bar as the main map: nothing older than 5 min
+        // or wider than 100 m, or "GPS ACTIVE" and the route would lie.
+        try {
+          location = await Location.getLastKnownPositionAsync({
+            maxAge: 5 * 60 * 1000,
+            requiredAccuracy: 100,
+          });
+        } catch {
+          location = null;
+        }
+      }
+      if (location?.coords) setUserLocation(location.coords);
+      else setLocDenied(true);
     } catch {
       setLocDenied(true);
     } finally {
@@ -132,10 +161,37 @@ const SpotDetailScreen = () => {
     }
   };
 
+  // Guards the late fresh-GPS winner below against post-unmount updates.
+  const mountedRef = useRef(true);
   useEffect(() => {
     loadLocation();
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
+  // Mini-map route preview: same OSRM fetch + GeoJSON line pattern as the
+  // main map. No error UI here — the card already shows straight-line
+  // distance; a failed route simply leaves the markers without a line.
+  const [miniRoute, setMiniRoute] = useState(null);
+  useEffect(() => {
+    let stale = false;
+    setMiniRoute(null);
+    if (!userLocation || !spot?.coords) return;
+    fetchRoute(userLocation, spot.coords).then((r) => {
+      if (!stale) setMiniRoute(r);
+    }).catch(() => {
+      if (!stale) setMiniRoute(null);
+    });
+    return () => {
+      stale = true;
+    };
+  }, [
+    userLocation?.latitude,
+    userLocation?.longitude,
+    spot?.coords?.latitude,
+    spot?.coords?.longitude,
+  ]);
   // Distance follows both fixes: GPS arriving late AND the snapshot being
   // replaced by the live spot (DATA-01) recompute it.
   useEffect(() => {
@@ -321,21 +377,50 @@ const SpotDetailScreen = () => {
                       0.02
                     );
                     const zoom = span > 1 ? 8 : span > 0.3 ? 10 : span > 0.08 ? 12 : 14;
-                    return (
-                      <Map
-                        style={StyleSheet.absoluteFillObject}
-                        mapStyle={mapStyleFor(isDarkMode)}
-                      >
-                        <Camera
-                          initialViewState={{
-                            center: [
-                              (userLocation.longitude + spot.coords.longitude) / 2,
-                              (userLocation.latitude + spot.coords.latitude) / 2,
-                            ],
-                            zoom,
-                          }}
-                        />
-                        <Marker id="you" lngLat={lngLatOf(userLocation)} anchor="center">
+                      return (
+                        // Intentionally non-interactive preview: pan/zoom/
+                        // rotate/pitch all off so gestures never fight the
+                        // parent ScrollView. Full navigation lives on the
+                        // main map one tap away.
+                        <Map
+                          style={StyleSheet.absoluteFillObject}
+                          mapStyle={mapStyleFor(isDarkMode)}
+                          dragPan={false}
+                          touchZoom={false}
+                          doubleTapZoom={false}
+                          doubleTapHoldZoom={false}
+                          touchRotate={false}
+                          touchPitch={false}
+                        >
+                          <Camera
+                            initialViewState={{
+                              center: [
+                                (userLocation.longitude + spot.coords.longitude) / 2,
+                                (userLocation.latitude + spot.coords.latitude) / 2,
+                              ],
+                              zoom,
+                            }}
+                          />
+                          {miniRoute && (
+                            <GeoJSONSource
+                              id="miniroute-source"
+                              data={{
+                                type: 'Feature',
+                                properties: {},
+                                geometry: {
+                                  type: 'LineString',
+                                  coordinates: miniRoute.coords.map(lngLatOf),
+                                },
+                              }}
+                            >
+                              <Layer
+                                id="miniroute-line"
+                                type="line"
+                                paint={{ 'line-color': colors.accent, 'line-width': 4 }}
+                              />
+                            </GeoJSONSource>
+                          )}
+                          <Marker id="you" lngLat={lngLatOf(userLocation)} anchor="center">
                           <View style={[styles.dot, { backgroundColor: full.primary, borderColor: '#fff' }]} />
                         </Marker>
                         <Marker id="spot" lngLat={lngLatOf(spot.coords)} anchor="bottom">

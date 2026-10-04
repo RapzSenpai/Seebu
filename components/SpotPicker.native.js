@@ -8,7 +8,9 @@ import { mapStyleFor, lngLatOf } from '../utils/mapTiles';
 // focusKey bumps on suggestion pick → camera flies to street level there.
 // Tap the map to drop or move the pin (MapLibre markers aren't draggable,
 // so the old drag gesture is tap-to-move now).
-const SpotPicker = ({ coords, onPick, focusKey }) => {
+// onTouchStateChange lets the parent ScrollView yield while a map gesture
+// is in flight — otherwise the parent steals pan/pinch on Android.
+const SpotPicker = ({ coords, onPick, focusKey, onTouchStateChange }) => {
   const { colors, isDarkMode } = useTheme();
   const cameraRef = useRef(null);
 
@@ -22,7 +24,12 @@ const SpotPicker = ({ coords, onPick, focusKey }) => {
 
   return (
     <View>
-      <View style={[styles.mapWrap, { borderColor: colors.border }]}>
+      <View
+        style={[styles.mapWrap, { borderColor: colors.border }]}
+        onTouchStart={() => onTouchStateChange?.(true)}
+        onTouchEnd={() => onTouchStateChange?.(false)}
+        onTouchCancel={() => onTouchStateChange?.(false)}
+      >
         <Map
           style={styles.map}
           mapStyle={mapStyleFor(isDarkMode)}

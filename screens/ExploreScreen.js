@@ -10,6 +10,7 @@ import { useTheme } from '../ThemeContext'; // Integrated Theme Hook
 import { useColorScheme } from '../lib/useColorScheme';
 import IslandBackground from '../components/IslandBackground';
 import BottomSheetModal from '../components/BottomSheetModal';
+import SpotGallery from '../components/SpotGallery';
 import { router, useFocusEffect } from 'expo-router';
 import { useSpots } from '../utils/useSpots';
 import { useReviewStats } from '../utils/useReviewStats';
@@ -275,7 +276,11 @@ const ExploreScreen = () => {
       >
         {selectedSpot && (
           <ScrollView showsVerticalScrollIndicator={false}>
-                <Image source={{ uri: cx(selectedSpot.img, 800) }} style={styles.detailImg} />
+                {(!!selectedSpot.img || (selectedSpot.photos || []).length > 0) && (
+                  <View style={styles.detailGallery}>
+                    <SpotGallery img={selectedSpot.img} photos={selectedSpot.photos} dotsTop={160} />
+                  </View>
+                )}
                 <View style={styles.detailHead}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.detailTitle, { color: colors.text }]} numberOfLines={2}>{selectedSpot.title}</Text>
@@ -397,7 +402,7 @@ const styles = StyleSheet.create({
   miniLoc: { fontSize: 12, marginTop: 1 },
   miniMeta: { fontSize: 12, marginTop: 3, fontWeight: '600' },
 
-  detailImg: { width: '100%', height: 200, borderRadius: 16, marginBottom: 15 },
+  detailGallery: { width: '100%', height: 200, borderRadius: 16, overflow: 'hidden', marginBottom: 15 },
   detailHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   detailTitle: { fontSize: 22, fontWeight: '900' },
   detailLoc: { marginTop: 2, fontWeight: '600' },

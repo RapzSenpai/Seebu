@@ -45,8 +45,12 @@ const AddSpot = () => {
   // so typed description/fees/photos survive a second search.
   const [pinKey, setPinKey] = useState(0);
   const [publishing, setPublishing] = useState(false);
+  // While a finger is on the picker map the form ScrollView yields, or the
+  // parent steals pan/pinch on Android. Released on touch end/cancel.
+  const [mapTouching, setMapTouching] = useState(false);
   const debounceRef = useRef(null);
   const abortRef = useRef(null);
+  const flyRef = useRef(null);
 
   const applyCoords = (c) => {
     setCoords(c);
@@ -61,6 +65,10 @@ const AddSpot = () => {
     const lng = which === 'lng' ? parseFloat(value) : parseFloat(lngText);
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       setCoords({ latitude: lat, longitude: lng });
+      // Valid typed pin: fly there once typing pauses, same street-level
+      // path as suggestion picks. Debounced so mid-number states don't yank.
+      if (flyRef.current) clearTimeout(flyRef.current);
+      flyRef.current = setTimeout(() => setPinKey((k) => k + 1), 600);
     }
   };
 
@@ -144,6 +152,8 @@ const AddSpot = () => {
       loc: town,
       address: r.display_name || '',
     });
+    // A newer pick supersedes any pending typed-coordinate fly.
+    if (flyRef.current) clearTimeout(flyRef.current);
     // No remount: the mounted form prefills empty fields from this.
     setPinKey((k) => k + 1);
     setResults([]);
@@ -156,6 +166,7 @@ const AddSpot = () => {
   const clearSearch = () => {
     if (abortRef.current) abortRef.current.abort();
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (flyRef.current) clearTimeout(flyRef.current);
     setQ('');
     setResults([]);
     setDropOpen(false);
@@ -212,6 +223,7 @@ const AddSpot = () => {
     <ScrollView
       style={[styles.page, { backgroundColor: full.background }]}
       contentContainerStyle={styles.body}
+      scrollEnabled={!mapTouching}
     >
       {syncing ? (
         <Text style={[styles.note, { color: colors.subText }]}>Loading spots…</Text>
@@ -276,7 +288,12 @@ const AddSpot = () => {
       )}
 
       <Text style={[styles.h2, { color: colors.text }]}>Pin location</Text>
-      <SpotPicker coords={coords} onPick={applyCoords} focusKey={pinKey} />
+      <SpotPicker coords={coords} onPick={applyCoords} focusKey={pinKey} onTouchStateChange={(touching) => {
+        // A pending typed-coordinate fly must not yank the camera after
+        // the user grabbed the map — the touch wins, the timer dies.
+        if (touching && flyRef.current) clearTimeout(flyRef.current);
+        setMapTouching(touching);
+      }} />
       <View style={styles.latlng}>
         <TextInput
           style={[
