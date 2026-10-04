@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, StatusBar, Platform } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import MapComponent from './MapComponent';
 import { useSpots } from '../utils/useSpots';
 import { useTheme } from '../ThemeContext';
@@ -8,7 +8,13 @@ import IslandBackground from '../components/IslandBackground';
 
 const MapScreen = () => {
   const { colors, isDarkMode } = useTheme();
-  const { spots } = useSpots();
+  const { spots, refresh: refreshSpots } = useSpots();
+  // DATA-03: same one-shot staleness as Explore — refresh every visit.
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshSpots();
+    }, [refreshSpots])
+  );
   const handleSpotPress = (spot) => {
     router.push({
       pathname: '/spot',

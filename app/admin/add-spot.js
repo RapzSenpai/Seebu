@@ -16,7 +16,7 @@ import { useColorScheme } from '../../lib/useColorScheme';
 import AdminScreen from '../../components/AdminScreen';
 import SpotForm from '../../components/SpotForm';
 import SpotPicker from '../../components/SpotPicker';
-import { nextSpotId, publishSpot } from '../../utils/adminSpots';
+import { allocateSpotId, publishSpot } from '../../utils/adminSpots';
 import { useSpots } from '../../utils/useSpots';
 
 const alertMsg = (title, msg) => {
@@ -40,6 +40,10 @@ const AddSpot = () => {
   const [lngText, setLngText] = useState('');
   const [suggested, setSuggested] = useState(null);
   const [formKey, setFormKey] = useState(0);
+  // LOC-01: pin focus has its own key now. The form no longer remounts on
+  // pick — SpotForm fills empty title/loc/address from `suggested` instead,
+  // so typed description/fees/photos survive a second search.
+  const [pinKey, setPinKey] = useState(0);
   const [publishing, setPublishing] = useState(false);
   const debounceRef = useRef(null);
   const abortRef = useRef(null);
@@ -140,8 +144,8 @@ const AddSpot = () => {
       loc: town,
       address: r.display_name || '',
     });
-    // Remount the form so title/town/address prefill; admin fills the rest.
-    setFormKey((k) => k + 1);
+    // No remount: the mounted form prefills empty fields from this.
+    setPinKey((k) => k + 1);
     setResults([]);
     setDropOpen(false);
   };
@@ -174,7 +178,7 @@ const AddSpot = () => {
     if (!form.img) return alertMsg('Missing photo', 'Add a main photo.');
     setPublishing(true);
     try {
-      const spotId = nextSpotId(spots);
+      const spotId = await allocateSpotId(spots);
       const fullSpot = {
         ...form,
         spotId,
@@ -272,7 +276,7 @@ const AddSpot = () => {
       )}
 
       <Text style={[styles.h2, { color: colors.text }]}>Pin location</Text>
-      <SpotPicker coords={coords} onPick={applyCoords} focusKey={formKey} />
+      <SpotPicker coords={coords} onPick={applyCoords} focusKey={pinKey} />
       <View style={styles.latlng}>
         <TextInput
           style={[

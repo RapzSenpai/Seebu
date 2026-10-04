@@ -27,6 +27,7 @@ import { db } from '../../firebase';
 import { useTheme } from '../../ThemeContext';
 import { useColorScheme } from '../../lib/useColorScheme';
 import { useSpots } from '../../utils/useSpots';
+import { cx } from '../../utils/cloudinary';
 import AdminImagePicker from '../../components/AdminImagePicker';
 import AdminScreen from '../../components/AdminScreen';
 
@@ -146,10 +147,11 @@ export default function AdminGuides() {
   }, []);
 
   const spotName = (spotId) =>
-    spots.find((s) => (s.spotId ?? s.id) === spotId)?.title ?? `Spot ${spotId}`;
+    spots.find((s) => Number(s.spotId ?? s.id) === Number(spotId))?.title ?? `Spot ${spotId}`;
 
   const filtered = useMemo(
-    () => (filter == null ? guides : guides.filter((g) => g.spotId === filter)),
+    // Numeric both sides: a string-typed doc still matches its spot filter.
+    () => (filter == null ? guides : guides.filter((g) => Number(g.spotId) === Number(filter))),
     [guides, filter]
   );
 
@@ -189,7 +191,8 @@ export default function AdminGuides() {
     setBusy(true);
     setError('');
     const payload = {
-      spotId: form.spotId,
+      // GUIDE-04: always store numeric so the user-side query matches.
+      spotId: Number(form.spotId),
       name: form.name.trim(),
       specialty: form.specialty.trim(),
       location: form.location.trim(),
@@ -231,7 +234,7 @@ export default function AdminGuides() {
     <View>
       <View style={styles.row}>
         {item.photoUrl ? (
-          <Image source={{ uri: item.photoUrl }} style={styles.avatar} />
+          <Image source={{ uri: cx(item.photoUrl, 200) }} style={styles.avatar} />
         ) : (
           <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: full.muted }]}>
             <Text style={[styles.avatarLetter, { color: colors.accent }]}>

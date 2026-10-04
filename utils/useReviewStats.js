@@ -7,29 +7,60 @@ import { db } from '../firebase';
 // back to static samples. spotIds always Number (admin customs are numeric).
 export const reviewDocId = (spotId, uid) => `${Number(spotId)}_${uid}`;
 
-export const useReviewStats = () => {
-  const [reviews, setReviews] = useState([]);
-  const [loading, setLoading] = useState(true);
+// REV-01/PERF-01: one shared fetch for every hook instance. Mounts within
+// REVIEW_TTL_MS reuse the rows (Explore + Settings + Map + detail no longer
+// each fire a full collection read); explicit refresh() always hits network.
+// Still one-shot reads — no listener architecture change.
+const REVIEW_TTL_MS = 60_000;
+const store = { rows: [], at: 0, inflight: null };
+const subs = new Set();
+const notify = () => subs.forEach((fn) => fn(store.rows));
 
-  const refresh = useCallback(async () => {
+const loadReviews = async () => {
+  if (store.inflight) return store.inflight;
+  const run = (async () => {
     try {
       const snap = await getDocs(collection(db, 'reviews'));
-      setReviews(
-        snap.docs.map((d) => {
-          const data = d.data();
-          return { ...data, id: d.id, spotId: Number(data.spotId) };
-        })
-      );
+      store.rows = snap.docs.map((d) => {
+        const data = d.data();
+        return { ...data, id: d.id, spotId: Number(data.spotId) };
+      });
+      store.at = Date.now();
     } catch {
-      // Offline / denied: static samples stay.
+      // Offline / denied: keep previous rows (static fallback covers first run).
     } finally {
-      setLoading(false);
+      store.inflight = null;
     }
-  }, []);
+    notify();
+    return store.rows;
+  })();
+  store.inflight = run;
+  return run;
+};
+
+export const useReviewStats = () => {
+  const [reviews, setReviews] = useState(store.rows);
+  const [loading, setLoading] = useState(store.rows.length === 0);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    subs.add(setReviews);
+    // Sync immediately: a load that finished between useState init and
+    // subscribing would otherwise wait for the next load to appear.
+    setReviews(store.rows);
+    // Mount load: network only on never-loaded or stale cache. store.at
+    // (not row count) marks loaded — a successful empty read stays cached
+    // until TTL instead of refetching on every mount.
+    const p =
+      store.at === 0 || Date.now() - store.at > REVIEW_TTL_MS
+        ? loadReviews()
+        : Promise.resolve();
+    p.finally(() => setLoading(false));
+    return () => {
+      subs.delete(setReviews);
+    };
+  }, []);
+
+  const refresh = useCallback(() => loadReviews(), []);
 
   const stats = useMemo(() => {
     const byId = {};

@@ -21,13 +21,19 @@ export const ADMIN_ITEMS = [
   { href: '/admin/messages', label: 'Messages', icon: 'mail-outline', activeIcon: 'mail', badge: true },
 ];
 
-export const useUnreadCount = () => {
+// PERF-02: enabled=false skips the listener. The drawer only needs it
+// while open (the menu button shows no badge); the web rail stays on.
+export const useUnreadCount = (enabled = true) => {
   const [unread, setUnread] = useState(0);
   useEffect(() => {
+    if (!enabled) {
+      setUnread(0);
+      return;
+    }
     const q = query(collection(db, 'inquiries'), where('handled', '==', false));
     const unsub = onSnapshot(q, (snap) => setUnread(snap.size), () => {});
     return unsub;
-  }, []);
+  }, [enabled]);
   return unread;
 };
 
@@ -207,7 +213,7 @@ const styles = StyleSheet.create({
 export const AdminDrawer = ({ visible, onClose }) => {
   const { colors } = useTheme();
   const pathname = usePathname();
-  const unread = useUnreadCount();
+  const unread = useUnreadCount(visible);
 
   const go = (href) => {
     onClose();

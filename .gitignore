@@ -34,9 +34,16 @@ yarn-error.*
 .env
 .env*.local
 
+# unused native Firebase config (JS SDK needs none of this — see report)
+google-services.json
+GoogleService-Info.plist
+
 # typescript
 *.tsbuildinfo
 
 # generated native folders
 /ios
 /android
+
+# local build log (never commit)
+/build-release.log

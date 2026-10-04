@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, ScrollView, Image, StyleSheet, Dimensions } from 'react-native';
+import { cx } from '../utils/cloudinary';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -22,7 +23,7 @@ const SpotGallery = ({ img, photos }) => {
         }}
       >
         {list.map((uri) => (
-          <Image key={uri} source={{ uri }} style={styles.img} />
+          <Image key={uri} source={{ uri: cx(uri, 1000) }} style={styles.img} />
         ))}
       </ScrollView>
       {list.length > 1 && (

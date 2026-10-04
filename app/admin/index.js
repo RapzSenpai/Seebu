@@ -10,7 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../ThemeContext';
 import { useColorScheme } from '../../lib/useColorScheme';
 import { db } from '../../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, getCountFromServer, query, where, orderBy, limit } from 'firebase/firestore';
 import { useSpots } from '../../utils/useSpots';
 import AdminScreen from '../../components/AdminScreen';
 
@@ -46,7 +46,13 @@ export default function AdminDashboard() {
   const { colors } = useTheme();
   const { colors: full } = useColorScheme();
   const { spots, customs, syncing } = useSpots();
-  const [users, setUsers] = useState([]);
+  // DATA-08: counts come from aggregation (1 read each at this scale) and
+  // recents from a limit-4 query — the dashboard no longer downloads every
+  // user doc + every guide doc on each visit. Docs missing createdAt (older
+  // merge-created profiles) are counted but can't appear in recents.
+  const [userCount, setUserCount] = useState(0);
+  const [adminCount, setAdminCount] = useState(0);
+  const [recentUsers, setRecentUsers] = useState([]);
   const [guideCount, setGuideCount] = useState(0);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingGuides, setLoadingGuides] = useState(true);
@@ -54,16 +60,25 @@ export default function AdminDashboard() {
   useEffect(() => {
     const load = async () => {
       try {
-        const snap = await getDocs(collection(db, 'users'));
-        setUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
+        const usersCol = collection(db, 'users');
+        const [totalSnap, adminSnap, recentSnap] = await Promise.all([
+          getCountFromServer(usersCol),
+          getCountFromServer(query(usersCol, where('role', '==', 'admin'))),
+          getDocs(query(usersCol, orderBy('createdAt', 'desc'), limit(4))),
+        ]);
+        setUserCount(totalSnap.data().count);
+        setAdminCount(adminSnap.data().count);
+        setRecentUsers(recentSnap.docs.map((d) => ({ uid: d.id, ...d.data() })));
       } catch {
-        setUsers([]);
+        setUserCount(0);
+        setAdminCount(0);
+        setRecentUsers([]);
       } finally {
         setLoadingUsers(false);
       }
       try {
-        const snap = await getDocs(collection(db, 'guides'));
-        setGuideCount(snap.size);
+        const snap = await getCountFromServer(collection(db, 'guides'));
+        setGuideCount(snap.data().count);
       } catch {
         setGuideCount(0);
       } finally {
@@ -73,10 +88,6 @@ export default function AdminDashboard() {
     load();
   }, []);
 
-  const adminCount = users.filter((u) => u.role === 'admin').length;
-  const recentUsers = [...users]
-    .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))
-    .slice(0, 4);
   const recentSpots = [...(customs || [])]
     .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))
     .slice(0, 3);
@@ -95,7 +106,7 @@ export default function AdminDashboard() {
       ) : (
         <>
           <View style={styles.statsRow}>
-            <StatCard icon="users" label="Total Users" value={users.length} iconColor={full.primary} colors={colors} full={full} />
+            <StatCard icon="users" label="Total Users" value={userCount} iconColor={full.primary} colors={colors} full={full} />
             <StatCard icon="map-pin" label="Spots" value={spots.length} iconColor={colors.accent} colors={colors} full={full} />
           </View>
           <View style={styles.statsRow}>

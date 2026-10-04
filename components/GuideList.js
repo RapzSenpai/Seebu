@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useTheme } from '../ThemeContext';
 import { useColorScheme } from '../lib/useColorScheme';
+import { cx } from '../utils/cloudinary';
 
 /**
  * Local Guides for a spot, backed by the Firestore `guides` collection.
@@ -36,8 +37,14 @@ const GuideList = ({ spot, theme: themeProp }) => {
         setLoading(false);
         return;
       }
+      // GUIDE-04: coerce — console-created string ids would never match.
+      const sid = Number(spot.id);
+      if (!Number.isFinite(sid)) {
+        setLoading(false);
+        return;
+      }
       try {
-        const guidesQuery = query(collection(db, 'guides'), where('spotId', '==', spot.id));
+        const guidesQuery = query(collection(db, 'guides'), where('spotId', '==', sid));
         const snapshot = await getDocs(guidesQuery);
         if (!cancelled) {
           setGuides(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -91,7 +98,7 @@ const GuideList = ({ spot, theme: themeProp }) => {
           style={[styles.guideCard, { backgroundColor: theme.card, borderColor: theme.border }]}
         >
           {guide.photoUrl ? (
-            <Image source={{ uri: guide.photoUrl }} style={styles.guideImg} />
+            <Image source={{ uri: cx(guide.photoUrl, 200) }} style={styles.guideImg} />
           ) : (
             <View style={[styles.guideImg, styles.guideInitials, { backgroundColor: theme.border }]}>
               <Text style={[styles.guideInitialsText, { color: theme.accent }]}>

@@ -11,25 +11,19 @@ import {
   Platform,
   Linking,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { Map, Camera, Marker, GeoJSONSource, Layer, UserLocation } from '@maplibre/maplibre-react-native';
 import { Crosshair } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import { useTheme } from '../ThemeContext';
 import { useColorScheme } from '../lib/useColorScheme';
 import { fetchRoute, haversineKm, formatEta } from '../utils/routing';
-
-const CEBU_CENTER = {
-  latitude: 10.3157,
-  longitude: 123.8854,
-  latitudeDelta: 0.5,
-  longitudeDelta: 0.5,
-};
+import { mapStyleFor, lngLatOf, boundsOf } from '../utils/mapTiles';
+import { cx } from '../utils/cloudinary';
 
 // ponytail: memo markers (12 spots, no cluster lib needed at this count).
-// tracksViewChanges intentionally left default: freezing it skips the custom
-// view's first paint on Android and pins never appear.
+// anchor="bottom" keeps the old pin-point look: the badge sits above the spot.
 const MemoMarker = React.memo(({ spot, selected, pinBg, fg, onPress }) => (
-  <Marker coordinate={spot.coords} onPress={onPress}>
+  <Marker id={String(spot.id)} lngLat={lngLatOf(spot.coords)} anchor="bottom" onPress={onPress}>
     <View
       style={{
         width: selected ? 44 : 34,
@@ -49,19 +43,21 @@ const MemoMarker = React.memo(({ spot, selected, pinBg, fg, onPress }) => (
   </Marker>
 ));
 
+// Provider-neutral handoff: geo: opens whatever maps app the device has.
+// No Google SDK, no key, no billing — a plain link, not an API call.
 const openExternalMaps = (spot) => {
   const latLng = `${spot.coords.latitude},${spot.coords.longitude}`;
   const url = Platform.select({
     ios: `maps:0,0?q=${spot.title}&daddr=${latLng}`,
-    android: `google.navigation:q=${latLng}`,
+    android: `geo:${latLng}?q=${latLng}(${encodeURIComponent(spot.title)})`,
   });
   Linking.openURL(url);
 };
 
 const MapComponent = ({ spots = [], onSpotPress }) => {
-  const { colors } = useTheme();
+  const { colors, isDarkMode } = useTheme();
   const { colors: full } = useColorScheme();
-  const mapRef = useRef(null);
+  const cameraRef = useRef(null);
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [userLoc, setUserLoc] = useState(null);
@@ -119,10 +115,10 @@ const MapComponent = ({ spots = [], onSpotPress }) => {
   useEffect(() => {
     if (!mapReady || fittedRef.current || validSpots.length === 0) return;
     fittedRef.current = true;
-    mapRef.current?.fitToCoordinates(
-      validSpots.map((s) => s.coords),
-      { edgePadding: { top: 120, right: 40, bottom: 60, left: 40 }, animated: false }
-    );
+    cameraRef.current?.fitBounds(boundsOf(validSpots.map((s) => s.coords)), {
+      padding: { top: 120, right: 40, bottom: 60, left: 40 },
+      duration: 0,
+    });
   }, [mapReady, validSpots]);
 
   const pickSpot = useCallback((spot) => {
@@ -153,15 +149,8 @@ const MapComponent = ({ spots = [], onSpotPress }) => {
 
   const recenter = useCallback(() => {
     if (!userLoc) return;
-    mapRef.current?.animateToRegion(
-      {
-        latitude: userLoc.latitude,
-        longitude: userLoc.longitude,
-        latitudeDelta: 0.15,
-        longitudeDelta: 0.15,
-      },
-      400
-    );
+    // Old delta 0.15 ≈ zoom 12.
+    cameraRef.current?.easeTo({ center: lngLatOf(userLoc), zoom: 12, duration: 400 });
   }, [userLoc]);
 
   const straightKm =
@@ -169,14 +158,15 @@ const MapComponent = ({ spots = [], onSpotPress }) => {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
+      <Map
         style={styles.map}
-        initialRegion={CEBU_CENTER}
-        showsUserLocation={!!userLoc}
-        onMapReady={() => setMapReady(true)}
+        mapStyle={mapStyleFor(isDarkMode)}
+        onDidFinishLoadingMap={() => setMapReady(true)}
       >
+        <Camera
+          ref={cameraRef}
+          initialViewState={{ center: [123.8854, 10.3157], zoom: 9 }}
+        />
         {filtered.map((spot) => (
           <MemoMarker
             key={spot.id}
@@ -192,13 +182,26 @@ const MapComponent = ({ spots = [], onSpotPress }) => {
           />
         ))}
         {route && (
-          <Polyline
-            coordinates={route.coords}
-            strokeColor={full.primary}
-            strokeWidth={4}
-          />
+          <GeoJSONSource
+            id="route-source"
+            data={{
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: route.coords.map(lngLatOf),
+              },
+            }}
+          >
+            <Layer
+              id="route-line"
+              type="line"
+              paint={{ 'line-color': full.primary, 'line-width': 4 }}
+            />
+          </GeoJSONSource>
         )}
-      </MapView>
+        {!!userLoc && <UserLocation />}
+      </Map>
 
       <View pointerEvents="box-none" style={styles.topOverlay}>
         <View
@@ -278,7 +281,7 @@ const MapComponent = ({ spots = [], onSpotPress }) => {
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <Image source={{ uri: selected.img }} style={styles.previewImg} />
+          <Image source={{ uri: cx(selected.img, 600) }} style={styles.previewImg} />
           <View style={styles.previewInfo}>
             <Text style={[styles.previewTitle, { color: colors.text }]} numberOfLines={1}>
               {selected.title}

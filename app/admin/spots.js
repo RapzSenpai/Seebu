@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { useTheme } from '../../ThemeContext';
 import { useColorScheme } from '../../lib/useColorScheme';
+import { db } from '../../firebase';
+import { collection, getDocs } from 'firebase/firestore';
 import { useSpots } from '../../utils/useSpots';
 import { saveSpotEdit, removeSpotDoc, hideSpot, restoreSpot } from '../../utils/adminSpots';
 import SpotForm from '../../components/SpotForm';
@@ -44,6 +46,8 @@ export default function AdminSpots() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
   const [editing, setEditing] = useState(null);
+  const [editLat, setEditLat] = useState('');
+  const [editLng, setEditLng] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -66,14 +70,42 @@ export default function AdminSpots() {
     return hidden.filter(matchesQuery);
   }, [hidden, query]);
 
+  // DATA-02: seed the pin fields from the spot so a wrong pin is fixable.
+  const openEdit = (item) => {
+    setEditing(item);
+    setEditLat(item.coords?.latitude != null ? String(item.coords.latitude) : '');
+    setEditLng(item.coords?.longitude != null ? String(item.coords.longitude) : '');
+  };
+
   const handleSave = async (formData) => {
     if (!editing) return;
+    // Both empty = keep the current pin. Otherwise both must be strictly
+    // numeric (parseFloat alone accepts "12abc") and in range; the coords
+    // key is omitted entirely when unchanged so merge never sees undefined.
+    const latOk = /^-?\d+(\.\d+)?$/.test(editLat.trim());
+    const lngOk = /^-?\d+(\.\d+)?$/.test(editLng.trim());
+    const lat = latOk ? parseFloat(editLat) : NaN;
+    const lng = lngOk ? parseFloat(editLng) : NaN;
+    let coords;
+    if (!editLat.trim() && !editLng.trim()) {
+      coords = undefined;
+    } else if (
+      latOk && lngOk &&
+      lat >= -90 && lat <= 90 &&
+      lng >= -180 && lng <= 180
+    ) {
+      coords = { latitude: lat, longitude: lng };
+    } else {
+      setError('Pin needs a latitude (-90 to 90) and longitude (-180 to 180), or leave both empty to keep the current pin.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       await saveSpotEdit(editing, {
         ...formData,
         spotId: editing.spotId ?? editing.id,
+        ...(coords ? { coords } : {}),
       });
       setEditing(null);
       refresh();
@@ -84,12 +116,30 @@ export default function AdminSpots() {
     }
   };
 
-  const handleDelete = (spot) =>
+  // GUIDE-02: warn when guides point here so deletes/hides don't orphan
+  // them silently. Number() both sides — console-typed string ids count too.
+  const handleDelete = async (spot) => {
+    const sid = Number(spot.spotId ?? spot.id);
+    // A failed guide lookup must not read as "no guides" — stop and show
+    // the error instead of orphaning guides silently.
+    let gsnap = null;
+    try {
+      gsnap = await getDocs(collection(db, 'guides'));
+    } catch (e) {
+      setError(`Couldn't check attached guides (${e?.message || 'read failed'}). Delete blocked — try again.`);
+      return;
+    }
+    const guideCount = gsnap.docs.filter((d) => Number(d.data()?.spotId) === sid).length;
+    const base = spot._custom
+      ? `${spot.title} will be permanently removed.`
+      : `${spot.title} will be hidden from users. You can restore it later.`;
+    const warn =
+      guideCount > 0
+        ? ` ${guideCount} guide${guideCount === 1 ? '' : 's'} still point${guideCount === 1 ? 's' : ''} here — reassign or delete ${guideCount === 1 ? 'it' : 'them'} in Guides first, or ${guideCount === 1 ? 'it' : 'they'} will show an empty spot.`
+        : '';
     confirmDestructive(
       spot._custom ? 'Delete spot?' : 'Hide spot?',
-      spot._custom
-        ? `${spot.title} will be permanently removed.`
-        : `${spot.title} will be hidden from users. You can restore it later.`,
+      base + warn,
       async () => {
         setError('');
         try {
@@ -104,6 +154,7 @@ export default function AdminSpots() {
         }
       }
     );
+  };
 
   const handleRestore = (h) =>
     confirmDestructive('Restore spot?', 'Users will see it again.', async () => {
@@ -136,7 +187,7 @@ export default function AdminSpots() {
         </View>
         <View style={styles.actions}>
           <TouchableOpacity
-            onPress={() => setEditing(item)}
+            onPress={() => openEdit(item)}
             style={[styles.iconBtn, { backgroundColor: full.muted }]}
             accessibilityLabel={`Edit ${item.title}`}
           >
@@ -261,6 +312,29 @@ export default function AdminSpots() {
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               Edit {editing?.title}
             </Text>
+            <Text style={[styles.coordHint, { color: colors.subText }]}>
+              Map pin — edit both fields to move it, or leave both empty to keep the current pin.
+            </Text>
+            <View style={styles.coordRow}>
+              <TextInput
+                style={[styles.coordInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+                placeholder="Latitude"
+                placeholderTextColor={colors.subText}
+                value={editLat}
+                onChangeText={setEditLat}
+                keyboardType="numeric"
+                editable={!busy}
+              />
+              <TextInput
+                style={[styles.coordInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+                placeholder="Longitude"
+                placeholderTextColor={colors.subText}
+                value={editLng}
+                onChangeText={setEditLng}
+                keyboardType="numeric"
+                editable={!busy}
+              />
+            </View>
             {editing && (
               <SpotForm
                 initial={editing}
@@ -305,6 +379,9 @@ const styles = StyleSheet.create({
   btnText: { fontWeight: '700', fontSize: 13 },
   modal: { flex: 1 },
   modalBody: { padding: 16, paddingBottom: 40 },
+  coordHint: { fontSize: 12, marginBottom: 8 },
+  coordRow: { flexDirection: 'row', marginBottom: 12 },
+  coordInput: { flex: 1, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, height: 48, fontSize: 15, marginRight: 8 },
   modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 12 },
   closeBtn: { paddingVertical: 12, borderRadius: 12, alignItems: 'center', marginTop: 12 },
 });

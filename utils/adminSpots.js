@@ -4,6 +4,9 @@ import {
   setDoc,
   deleteDoc,
   doc,
+  getDoc,
+  getDocs,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { cebuSpots } from './spots';
@@ -11,11 +14,49 @@ import { cebuSpots } from './spots';
 const isBuiltinId = (spotId) =>
   cebuSpots.some((s) => (s.spotId ?? s.id) === spotId);
 
-// Admin writes for the spots collection. Reads go through useSpots().
-// Built-ins (spotId 1-12): edit saves an override doc, never deleted.
-// Customs (spotId 13+): full edit + delete.
+// Legacy max+1 fallback (kept for compat). New publishes use
+// allocateSpotId() below — same numbering, race-safe via transaction.
 export const nextSpotId = (spots) =>
   spots.reduce((m, s) => Math.max(m, s.spotId ?? s.id ?? 0), 12) + 1;
+
+// Race-safe spotId allocation: a counters/spots doc hands out each id once.
+// The transaction touches only the counter doc. Bootstrap (max existing id)
+// is computed BEFORE the transaction — collection reads inside a tx invite
+// contention retries, and tx.get can't take a collection reference.
+// Requires the matching `counters` rule in firestore.rules (deploy it).
+// ponytail: single-admin app, one counter doc is enough.
+export const allocateSpotId = async (spots = []) => {
+  const counterRef = doc(db, 'counters', 'spots');
+  // Bootstrap default from the local list; refined from Firestore when the
+  // counter doesn't exist yet. Peek first so the common case (live counter)
+  // costs one doc read and no catalog scan. Any read failure aborts —
+  // initializing the counter from an unverified maximum could hand out a
+  // colliding id, so the publish is blocked with a retryable error instead.
+  let bootstrap = null;
+  try {
+    const peek = await getDoc(counterRef);
+    if (!peek.exists() || !Number.isFinite(peek.data()?.next)) {
+      const snap = await getDocs(collection(db, 'spots'));
+      const maxDoc = snap.docs.reduce((m, d) => Math.max(m, d.data()?.spotId ?? 0), 12);
+      const maxLocal = spots.reduce((m, s) => Math.max(m, s.spotId ?? s.id ?? 0), 12);
+      bootstrap = Math.max(maxDoc, maxLocal) + 1;
+    }
+  } catch (e) {
+    throw new Error(
+      `Couldn't verify spot IDs (${e?.message || 'read failed'}). Check connection and try again.`
+    );
+  }
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(counterRef);
+    const next =
+      snap.exists() && Number.isFinite(snap.data()?.next) ? snap.data().next : bootstrap;
+    if (!Number.isFinite(next)) {
+      throw new Error('Spot counter unavailable — try again.');
+    }
+    tx.set(counterRef, { next: next + 1 }, { merge: true });
+    return next;
+  });
+};
 
 export const publishSpot = async (data) => {
   const ref = await addDoc(collection(db, 'spots'), {

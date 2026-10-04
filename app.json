@@ -12,6 +12,7 @@
       "expo-router",
       "expo-font",
       "expo-notifications",
+      "@maplibre/maplibre-react-native",
       [
         "expo-location",
         {
@@ -29,6 +30,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.seebu.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"

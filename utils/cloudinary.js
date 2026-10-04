@@ -12,6 +12,18 @@ const UPLOAD_PRESET =
 export const isCloudinaryConfigured = () =>
   CLOUD_NAME.length > 0 && UPLOAD_PRESET.length > 0;
 
+// IMG-02: fetch-format delivery transform. Cloudinary URLs get
+// f_auto/q_auto/w_* injected; anything else (Unsplash,.pick) passes
+// through untouched, so call sites need no URL sniffing.
+export const cx = (url, w) => {
+  if (typeof url !== 'string' || !url.includes('res.cloudinary.com')) return url;
+  if (!/\/upload\//.test(url) || !Number.isFinite(Number(w))) return url;
+  // Signed delivery URLs embed a signature over the exact transformation
+  // string — injecting ours would invalidate it. Leave them alone.
+  if (/\/s--[^/]+--\//.test(url)) return url;
+  return url.replace('/upload/', `/upload/f_auto,q_auto,w_${Number(w)}/`);
+};
+
 export const pickImageAsync = async () => {
   const { status } =
     await ImagePicker.requestMediaLibraryPermissionsAsync();

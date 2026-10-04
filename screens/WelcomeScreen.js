@@ -23,6 +23,7 @@ import { useTheme } from '../ThemeContext';
 import { useColorScheme } from '../lib/useColorScheme';
 import IslandBackground from '../components/IslandBackground';
 import { cebuSpots } from '../utils/spots';
+import { cx } from '../utils/cloudinary';
 
 const { width } = Dimensions.get('window');
 
@@ -223,7 +224,7 @@ const WelcomeScreen = () => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
             {featured.map((s) => (
               <View key={s.id} style={[styles.chip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Image source={{ uri: s.img }} style={styles.chipImg} />
+                <Image source={{ uri: cx(s.img, 400) }} style={styles.chipImg} />
                 <View style={styles.chipInfo}>
                   <Text style={[styles.chipTitle, { color: colors.text }]} numberOfLines={1}>
                     {s.title}

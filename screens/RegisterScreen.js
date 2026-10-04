@@ -51,16 +51,18 @@ const RegisterScreen = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       const user = userCredential.user;
 
-      if (Platform.OS !== 'web') {
-        await setDoc(doc(db, "users", user.uid), {
-          uid: user.uid,
-          displayName: name,
-          email: normalizedEmail,
-          interests: selectedInterests,
-          createdAt: new Date().toISOString(),
-          role: 'user',
-        });
+      // Always create the Firestore profile (all platforms); only native
+      // signs out here so the user lands on RegistrationComplete > Login.
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        displayName: name,
+        email: normalizedEmail,
+        interests: selectedInterests,
+        createdAt: new Date().toISOString(),
+        role: 'user',
+      });
 
+      if (Platform.OS !== 'web') {
         await signOut(auth);
       }
 

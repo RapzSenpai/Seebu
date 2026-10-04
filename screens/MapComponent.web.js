@@ -17,6 +17,7 @@ import { useTheme } from '../ThemeContext';
 import { useColorScheme } from '../lib/useColorScheme';
 import { fetchRoute, haversineKm, formatEta } from '../utils/routing';
 import { useReviewStats } from '../utils/useReviewStats';
+import { cx } from '../utils/cloudinary';
 
 const CEBU_CENTER = { lat: 10.3157, lng: 123.8854 };
 
@@ -330,7 +331,7 @@ const MapComponent = ({ spots = [], onSpotPress }) => {
                     },
                   ]}
                 >
-                  <Image source={{ uri: spot.img }} style={styles.spotThumb} />
+                  <Image source={{ uri: cx(spot.img, 400) }} style={styles.spotThumb} />
                   <View style={styles.spotInfo}>
                     <Text style={[styles.spotTitle, { color: colors.text }]} numberOfLines={1}>
                       {spot.title}

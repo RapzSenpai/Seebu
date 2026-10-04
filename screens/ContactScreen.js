@@ -9,6 +9,7 @@ import { useTheme } from '../ThemeContext';
 import { useColorScheme } from '../lib/useColorScheme';
 import { auth, db } from '../firebase';
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../UserContext';
 
 // ponytail: swap with the real team inbox when ready. Shown + used as the
@@ -28,6 +29,10 @@ const ContactScreen = () => {
   const [busy, setBusy] = useState(false);
   const [threads, setThreads] = useState([]);
   const [loadingThreads, setLoadingThreads] = useState(true);
+  // MSG-02: per-thread "new reply" dot. Seen reply counts live per-account
+  // on-device; a thread whose reply count grew since the last visit glows
+  // until the next visit. No schema change, no extra reads.
+  const [newReplyIds, setNewReplyIds] = useState({});
 
   // Your past inquiries + admin replies. Refreshes every visit so new
   // replies appear without reinstalling or relogging.
@@ -35,6 +40,7 @@ const ContactScreen = () => {
     const user = auth.currentUser;
     if (!user) {
       setThreads([]);
+      setNewReplyIds({});
       setLoadingThreads(false);
       return;
     }
@@ -48,6 +54,23 @@ const ContactScreen = () => {
           .map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       );
+      // Diff reply counts against last visit, then record this visit.
+      try {
+        const key = `seebu:seenReplies:${user.uid}`;
+        const raw = await AsyncStorage.getItem(key);
+        const seen = raw ? JSON.parse(raw) : {};
+        const fresh = {};
+        const next = {};
+        snap.docs.forEach((d) => {
+          const n = Array.isArray(d.data()?.replies) ? d.data().replies.length : 0;
+          next[d.id] = n;
+          if (n > 0 && n > (seen[d.id] || 0)) fresh[d.id] = true;
+        });
+        setNewReplyIds(fresh);
+        await AsyncStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        setNewReplyIds({});
+      }
     } catch {
       setThreads([]);
     } finally {
@@ -196,7 +219,14 @@ const ContactScreen = () => {
                 key={t.id}
                 style={[styles.thread, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
-                <Text style={[styles.threadCat, { color: colors.accent }]}>{t.category || 'General'}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={[styles.threadCat, { color: colors.accent }]}>{t.category || 'General'}</Text>
+                  {newReplyIds[t.id] && (
+                    <View style={{ marginLeft: 8, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: colors.accent }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: full.accentForeground }}>NEW REPLY</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={[styles.threadMsg, { color: colors.text }]}>{t.message}</Text>
                 {replies.map((r, i) => (
                   <View key={i} style={[styles.adminReply, { backgroundColor: full.muted }]}>

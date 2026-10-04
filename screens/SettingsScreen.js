@@ -21,6 +21,7 @@ import { collection, query, where, getDocs, writeBatch, doc, deleteDoc } from 'f
 import { useReviewStats } from '../utils/useReviewStats';
 import { useSavedPlaces } from '../utils/useSavedPlaces';
 import { useSpots } from '../utils/useSpots';
+import { cx } from '../utils/cloudinary';
 import { biometricStatus, biometricEnabled, setBiometricEnabled, authenticate } from '../utils/biometric';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -136,15 +137,21 @@ const SettingsScreen = () => {
 
   const { mine, refresh: refreshStats } = useReviewStats();
   const myStats = mine(auth.currentUser?.uid);
-  const { savedIds, toggleSave } = useSavedPlaces();
-  const { spots } = useSpots();
+  const { savedIds, toggleSave, unsave } = useSavedPlaces();
+  const { spots, refresh: refreshSpots } = useSpots();
   const savedSpots = savedIds
     .map((id) => spots.find((s) => Number(s.id) === Number(id)))
     .filter(Boolean);
+  // DATA-04: ids with no catalog match = hidden/deleted. Tombstones keep
+  // the save count honest and let the user clear them.
+  const missingSavedIds = savedIds.filter(
+    (id) => !spots.some((s) => Number(s.spotId ?? s.id) === Number(id))
+  );
   useFocusEffect(
     React.useCallback(() => {
       refreshStats();
-    }, [refreshStats])
+      refreshSpots();
+    }, [refreshStats, refreshSpots])
   );
   const [bioState, setBioState] = useState({ checked: false, ok: false, reason: '', on: false });
   const [bioBusy, setBioBusy] = useState(false);
@@ -265,7 +272,7 @@ const SettingsScreen = () => {
         </View>
 
         <SectionLabel>Saved Places</SectionLabel>
-        {savedSpots.length > 0 ? (
+        {savedSpots.length > 0 || missingSavedIds.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedRow}>
             {savedSpots.map((s) => (
               <View key={s.id} style={styles.savedCard}>
@@ -273,7 +280,7 @@ const SettingsScreen = () => {
                   onPress={() => router.push({ pathname: '/spot', params: { spot: JSON.stringify(s) } })}
                   activeOpacity={0.85}
                 >
-                  <Image source={{ uri: s.img }} style={styles.savedImg} />
+                  <Image source={{ uri: cx(s.img, 400) }} style={styles.savedImg} />
                   <Text style={[styles.savedName, { color: colors.text }]} numberOfLines={1}>
                     {s.title}
                   </Text>
@@ -281,6 +288,23 @@ const SettingsScreen = () => {
                 <TouchableOpacity
                   onPress={() => toggleSave(s.id)}
                   style={[styles.savedX, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <Feather name="x" size={13} color={colors.subText} />
+                </TouchableOpacity>
+              </View>
+            ))}
+            {missingSavedIds.map((id) => (
+              <View key={`missing-${id}`} style={styles.savedCard}>
+                <View style={[styles.savedImg, { backgroundColor: full.muted, alignItems: 'center', justifyContent: 'center' }]}>
+                  <Feather name="eye-off" size={20} color={colors.subText} />
+                </View>
+                <Text style={[styles.savedName, { color: colors.subText }]} numberOfLines={1}>
+                  No longer available
+                </Text>
+                <TouchableOpacity
+                  onPress={() => unsave(id)}
+                  style={[styles.savedX, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  accessibilityLabel="Remove unavailable saved place"
                 >
                   <Feather name="x" size={13} color={colors.subText} />
                 </TouchableOpacity>

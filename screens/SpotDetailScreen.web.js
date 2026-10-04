@@ -38,30 +38,17 @@ import { auth } from '../firebase';
 import { useUser } from '../UserContext';
 import { useReviewStats } from '../utils/useReviewStats';
 import { useSavedPlaces } from '../utils/useSavedPlaces';
-
-const DEFAULT_SPOT = {
-  id: 1,
-  title: 'Kawasan Falls',
-  loc: 'Badian',
-  img: 'https://images.unsplash.com/photo-1518107616385-ad302212a99e?w=800',
-  coords: { latitude: 9.8034, longitude: 123.3744 },
-  transport: {
-    terminal: 'South Bus Terminal (Cebu City)',
-    busLine: 'Ceres Liner (via Barili)',
-    fare: '₱210 - ₱280',
-    schedule: 'Every 30 mins (3AM - 9PM)',
-    instructions:
-      "Board a bus marked 'Bato via Barili'. Tell the conductor to drop you off at the Matutinao Church in Badian.",
-  },
-};
+import { useSpots } from '../utils/useSpots';
 
 // Expo Router params are strings, so a pushed object arrives JSON-encoded.
+// Missing/corrupt params resolve to null — never a fake spot (BUG-02).
 function parseSpotParam(raw) {
-  if (!raw) return DEFAULT_SPOT;
+  if (!raw) return null;
   try {
-    return { ...DEFAULT_SPOT, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
   } catch {
-    return DEFAULT_SPOT;
+    return null;
   }
 }
 
@@ -85,8 +72,15 @@ const SpotDetailScreen = () => {
     instruction: full.muted,
   };
 
-  // Data Extraction from Route Params
-  const spot = parseSpotParam(params.spot);
+  // Data: resolve the pushed snapshot against the live catalog (DATA-01).
+  // Live wins when present; snapshot stays as the offline fallback.
+  const snap = parseSpotParam(params.spot);
+  const { spots: liveSpots } = useSpots();
+  const snapId = Number(snap?.spotId ?? snap?.id);
+  const live = Number.isFinite(snapId)
+    ? liveSpots.find((s) => Number(s.spotId ?? s.id) === snapId) ?? null
+    : null;
+  const spot = live ?? snap;
 
   // Real reviews: stats + own review for the composer.
   const { stats, listFor, refresh: refreshReviews } = useReviewStats();
@@ -97,14 +91,14 @@ const SpotDetailScreen = () => {
     auth.currentUser?.displayName ||
     auth.currentUser?.email?.split('@')[0] ||
     'Traveller';
-  const ownReview = uid ? listFor(spot.id).find((r) => r.uid === uid) ?? null : null;
+  const ownReview = uid ? listFor(spot?.id).find((r) => r.uid === uid) ?? null : null;
   const { isSaved, toggleSave, busy: saveBusy } = useSavedPlaces();
-  const heroSaved = isSaved(spot.id);
-  const realStat = stats[Number(spot.id)] ?? null;
-  const realList = listFor(spot.id);
+  const heroSaved = isSaved(spot?.id);
+  const realStat = spot ? stats[Number(spot.id)] ?? null : null;
+  const realList = listFor(spot?.id);
   const heroRating = realStat
     ? { value: realStat.avg, count: realStat.count }
-    : spot.rating != null
+    : spot?.rating != null
       ? { value: spot.rating, count: spot.reviewsCount ?? null }
       : null;
   const [reviewsOpen, setReviewsOpen] = useState(false);
@@ -136,6 +130,24 @@ const SpotDetailScreen = () => {
   };
 
   const activeTabFg = full.accentForeground;
+
+  // BUG-02: no params (or corrupt JSON) shows not-found, never a fake spot.
+  if (!spot) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 8 }}>Spot not found</Text>
+        <Text style={{ fontSize: 14, color: colors.subText, textAlign: 'center', marginBottom: 16 }}>
+          This spot may have been removed or the link is invalid.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12 }}
+        >
+          <Text style={{ color: full.accentForeground, fontWeight: '700' }}>Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

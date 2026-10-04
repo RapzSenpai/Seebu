@@ -43,111 +43,8 @@ const SBadge = ({ size, radius, fontSize }) => {
 
 // Capstone setup: the app talks to Groq directly with a key from .env
 // (client-visible by design here — restricted free key, rotate after demo).
-// lib/ai.js owns the call; the mock below stays as the offline fallback.
-const USE_AI_PROXY = isAiConfigured();
-
-const choose = (options) => options[Math.floor(Math.random() * options.length)];
-
-// Mock fallback chatbot intelligence: Cebu-specific answers and topic matching
-const generateBotResponse = (text) => {
-  const lower = text.toLowerCase().trim();
-
-  if (/(where is cebu|where is it located|where is the philippines|what is cebu|cebu located)/.test(lower)) {
-    return choose([
-      'Cebu is an island province in the Central Visayas region of the Philippines, known for beaches, waterfalls, and historic sites.',
-      'Cebu is in the Philippines, in the Central Visayas region. It is famous for its islands, diving spots, and local lechon.',
-    ]);
-  }
-
-  if (/(hello|hi|hey|good morning|good afternoon|good evening)/.test(lower)) {
-    return choose([
-      "Hello! 👋 I'm your SeeBu travel guide. I can help you find beaches, waterfalls, food spots, transport, and more around Cebu.",
-      "Hi there! I can help you explore Cebu's attractions, food, travel, and accommodation. What would you like to know?",
-    ]);
-  }
-
-  if (/(tell me about cebu|what can you do|help me|assist me|i need help)/.test(lower)) {
-    return choose([
-      'I can help you find beaches, waterfalls, restaurants, hotels, and transport options in Cebu. Just ask me a question about your trip.',
-      'Ask me about Cebu attractions, how to get there, where to eat, or what to do on a day trip and I will give you local advice.',
-    ]);
-  }
-
-  if (/(beach|beaches|snorkel|dive|moalboal|mactan|malapascua|white sand|seaside)/.test(lower)) {
-    return choose([
-      'Cebu has amazing beaches. For snorkeling, try Moalboal. If you want resort life near the airport, Mactan Island is perfect. Want a beach with good food and nightlife? I can recommend one.',
-      'If you love beaches, Mactan and Moalboal are great choices. You can also visit Malapascua for diving and white sand beaches for relaxing.',
-    ]);
-  }
-
-  if (/(waterfall|falls|kawasan|tumalog|oslob|kantabogon|canyoneering)/.test(lower)) {
-    return choose([
-      'For waterfalls, Kawasan Falls is the most famous and offers canyoneering adventures. Tumalog Falls and Cambais Falls are great if you want a calmer visit.',
-      'Kawasan Falls is a top choice for canyoneering. Tumalog Falls is peaceful and beautiful, while Cambais is excellent if you want fewer crowds.',
-    ]);
-  }
-
-  if (/(food|restaurant|eat|dinner|lunch|cafe|market|seafood|street food|lechon)/.test(lower)) {
-    return choose([
-      'Cebu is famous for lechon and fresh seafood. Try local favorites like Larsian for barbecue or La Vie Parisienne for a nicer meal.',
-      'If you want local food, start with lechon and seafood. For a relaxed meal, try Cebu City cafes or seaside restaurants on Mactan Island.',
-    ]);
-  }
-
-  if (/(transport|bus|taxi|grab|ride|jeepney|ferry|travel|commute|shuttle|airport)/.test(lower)) {
-    return choose([
-      'Getting around Cebu is easiest by Grab or taxi in the city, while jeepneys are cheap for short trips. For island trips, take the ferry from Cebu City or Lapu-Lapu.',
-      'Grab is convenient in Cebu City, and jeepneys are good for budget travel. If you need island transfers, take the ferry or arrange a boat ride from Mactan.',
-    ]);
-  }
-
-  if (/(itinerary|day trip|plan|what should i do|schedule|recommend|best of cebu|top spots|places to visit)/.test(lower)) {
-    return choose([
-      'A great Cebu itinerary is morning at a beach or dive spot, afternoon waterfall adventure, and evening trying local food in the city. How many days do you have?',
-      'Try a day trip with a morning beach visit, afternoon waterfall, and evening food tour in Cebu City. Tell me your travel style and I can refine it.',
-    ]);
-  }
-
-  if (/(budget|cheap|cost|price|price range|affordable)/.test(lower)) {
-    return choose([
-      'Cebu can be budget-friendly. Local meals are often 100-300 PHP, and transit is cheap if you use jeepneys or shared rides.',
-      'Many attractions in Cebu are inexpensive. Food, transit, and beaches can be very affordable if you focus on local options.',
-    ]);
-  }
-
-  if (/(hotel|stay|resort|accommodation|inn|hostel)/.test(lower)) {
-    return choose([
-      'For a convenient stay, Mactan has good resorts and is close to the airport. Cebu City has guesthouses and nice hotels near attractions.',
-      'Mactan Island is great for resorts and airport access. Cebu City is better if you want food, nightlife, and city sightseeing.',
-    ]);
-  }
-
-  if (/(weather|rain|sunny|hot|temperature|climate)/.test(lower)) {
-    return choose([
-      'Cebu is generally warm and tropical. If you visit during the rainy season, bring light rain gear and plan indoor backup activities.',
-      'Expect warm weather in Cebu most of the year. It can rain suddenly, so carry a light umbrella or poncho when you travel around.',
-    ]);
-  }
-
-  if (/(how are you|who are you|like you|best chatbot)/.test(lower)) {
-    return choose([
-      'I am your SeeBu travel assistant. I can answer Cebu travel questions and help you explore attractions, food, and transportation.',
-      'I am a travel guide bot for Cebu. Ask me anything about where to go, what to eat, and how to get around.',
-    ]);
-  }
-
-  if (/(thank you|thanks|ty|thank u)/.test(lower)) {
-    return choose([
-      'You’re welcome! Let me know if you need more Cebu travel tips.',
-      'Glad I could help! Ask me anything else about Cebu anytime.',
-    ]);
-  }
-
-  return choose([
-    'I can help with Cebu beaches, waterfalls, food, transport, hotels and day trips. What would you like to know?',
-    'Tell me if you want recommendations for beaches, waterfalls, food, or travel in Cebu, and I’ll give you a better answer.',
-  ]);
-};
+// lib/ai.js owns the call. No mock fallback: failures surface the real
+// error (banner + error bubble) and never consume quota.
 
 const fmtTime = (t) => {
   const d = t instanceof Date ? t : new Date(t);
@@ -161,7 +58,11 @@ const ChatbotScreen = () => {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [aiStatus, setAiStatus] = useState(USE_AI_PROXY ? 'active' : 'missing');
+  // CHAT-06: evaluated per render, not captured at module load — a key
+  // added to .env (then restart, Expo bakes env at bundle time) takes
+  // effect without depending on import order.
+  const aiReady = isAiConfigured();
+  const [aiStatus, setAiStatus] = useState(aiReady ? 'active' : 'missing');
   const [aiError, setAiError] = useState('');
   const scrollViewRef = useRef(null);
   const { colors, isDarkMode } = useTheme();
@@ -176,6 +77,9 @@ const ChatbotScreen = () => {
   // response sees a stale generation and drops itself instead of
   // resurrecting a dead conversation. Same on unmount/remount.
   const genRef = useRef(0);
+  // Sync guard: state updates lag rapid double-taps, so the in-flight flag
+  // lives in a ref. Prevents double sends → double quota consumption.
+  const busyRef = useRef(false);
 
   useEffect(() => {
     remainingToday(auth.currentUser?.uid).then(setLeftToday);
@@ -222,35 +126,39 @@ const ChatbotScreen = () => {
     scrollViewRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
 
-  const fetchProxyResponse = async (text) => {
-    try {
-      const reply = await fetchAiReply(text);
-      setAiStatus('active');
-      setAiError('');
-      return { success: true, text: reply };
-    } catch (error) {
-      console.warn('AI error:', error?.message);
-      setAiStatus('error');
-      setAiError(error.message || 'Request failed');
-      return { success: false, text: `Sorry, I couldn't reach the assistant. ${generateBotResponse(text)}` };
-    }
-  };
-
+  // CHAT-03: failures throw the real error — no mock text appended.
+  // The banner (CHAT-01) + the error bubble below carry the actual cause.
   const fetchAiResponse = async (text) => {
-    if (USE_AI_PROXY) {
-      const result = await fetchProxyResponse(text);
-      return result.text;
+    if (!aiReady) {
+      throw new Error('Assistant is offline — add EXPO_PUBLIC_GROQ_API_KEY to .env and restart.');
     }
-
-    return generateBotResponse(text);
+    return fetchAiReply(text);
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || loading) return;
-
-    const allowed = await consumeOne(auth.currentUser?.uid);
-    setLeftToday(await remainingToday(auth.currentUser?.uid));
-    if (!allowed) return;
+    if (!inputText.trim() || busyRef.current) return;
+    // Guard first, before any await — two taps in the same tick must not
+    // both pass. Released on every non-send path below.
+    busyRef.current = true;
+    // CHAT-02: quota is checked first and consumed only after a real reply.
+    // Failures, timeouts, and offline attempts cost nothing.
+    const uid = auth.currentUser?.uid;
+    let left;
+    try {
+      left = await remainingToday(uid);
+    } catch {
+      busyRef.current = false;
+      return;
+    }
+    setLeftToday(left);
+    if (left <= 0) {
+      busyRef.current = false;
+      Alert.alert(
+        'Daily limit reached',
+        `You've used all ${CHAT_DAILY_LIMIT} messages for today. Your budget refreshes tomorrow — clearing the chat doesn't refund it.`
+      );
+      return;
+    }
 
     const userText = inputText.trim();
     const userMessage = {
@@ -265,19 +173,47 @@ const ChatbotScreen = () => {
     setLoading(true);
     const gen = genRef.current;
 
-    const botText = await fetchAiResponse(userText);
-    // Conversation was cleared (or screen remounted) while waiting —
-    // drop the stale reply, don't resurrect.
-    if (genRef.current !== gen) return;
-    const botResponse = {
-      id: (Date.now() + 1).toString(),
-      text: botText,
-      sender: 'bot',
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, botResponse]);
-    setLoading(false);
+    try {
+      const botText = await fetchAiResponse(userText);
+      // Conversation was cleared (or screen remounted) while waiting —
+      // drop the stale reply, don't resurrect.
+      if (genRef.current !== gen) return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          text: botText,
+          sender: 'bot',
+          timestamp: new Date(),
+        },
+      ]);
+      setAiStatus('active');
+      setAiError('');
+      await consumeOne(uid);
+    } catch (e) {
+      if (genRef.current !== gen) return;
+      const reason = e?.message || 'Request failed';
+      console.warn('AI error:', reason);
+      setAiStatus('error');
+      setAiError(reason);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          text: `Sorry, I couldn't reach the assistant. ${reason} Your message wasn't counted — try again.`,
+          sender: 'bot',
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      if (genRef.current === gen) setLoading(false);
+      busyRef.current = false;
+    }
+    // Quota display refresh lives outside the AI try/catch: a refresh
+    // failure must never paint an error bubble over a successful reply.
+    try {
+      setLeftToday(await remainingToday(uid));
+    } catch {}
   };
 
   const renderAvatar = (sender) => {
@@ -316,6 +252,22 @@ const ChatbotScreen = () => {
             <Plus size={18} color={theme.subtext} />
           </TouchableOpacity>
         </View>
+
+        {/* CHAT-01: the AI error state was set but never rendered — every
+            failure looked identical. Missing key gets a setup hint. */}
+        {!aiReady ? (
+          <View style={{ marginHorizontal: 16, marginBottom: 8, borderRadius: 12, padding: 12, backgroundColor: `${colors.accent}1A` }}>
+            <Text style={{ fontSize: 13, color: theme.text, fontWeight: '600' }}>
+              Assistant is offline — add EXPO_PUBLIC_GROQ_API_KEY to .env and restart to enable live replies.
+            </Text>
+          </View>
+        ) : aiStatus === 'error' && !!aiError ? (
+          <View style={{ marginHorizontal: 16, marginBottom: 8, borderRadius: 12, padding: 12, backgroundColor: `${full.destructive}1A` }}>
+            <Text style={{ fontSize: 13, color: theme.text, fontWeight: '600' }}>
+              Assistant error: {aiError}
+            </Text>
+          </View>
+        ) : null}
 
         <ScrollView
           ref={scrollViewRef}
@@ -418,17 +370,24 @@ const ChatbotScreen = () => {
               onChangeText={setInputText}
               multiline
               maxLength={500}
+              // CHAT-07: explicit send action (keyboard send key submits,
+              // keyboard stays up for follow-ups); quota-exhausted taps get
+              // the explainer Alert instead of a dead button.
+              returnKeyType="send"
+              blurOnSubmit={false}
+              submitBehavior="submit"
+              onSubmitEditing={handleSendMessage}
             />
             <TouchableOpacity
               style={[
                 styles.sendButton,
                 {
                   backgroundColor: theme.userBg,
-                  opacity: inputText.trim() && !loading && leftToday > 0 ? 1 : 0.5,
+                  opacity: inputText.trim() && !loading ? 1 : 0.5,
                 },
               ]}
               onPress={handleSendMessage}
-              disabled={!inputText.trim() || loading || leftToday <= 0}
+              disabled={!inputText.trim() || loading}
               accessibilityLabel="Send message"
             >
               <Send size={18} color={theme.userText} />

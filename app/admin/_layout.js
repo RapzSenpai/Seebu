@@ -20,7 +20,8 @@ export default function AdminLayout() {
   }
 
   if (!isAdmin) {
-    return <Redirect href="/" />;
+    // NOTE: '/' (index) is guest-only, so logged-in non-admins go to tabs.
+    return <Redirect href="/(tabs)" />;
   }
 
   // Web gets a fixed left sidebar; the APK gets the same items as a

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,9 +23,10 @@ import {
   Settings // Added for the settings toggle
 } from 'lucide-react-native';
 import * as Location from 'expo-location';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { Map, Camera, Marker } from '@maplibre/maplibre-react-native';
 import { useTheme } from '../ThemeContext';
 import { useColorScheme } from '../lib/useColorScheme';
+import { mapStyleFor, lngLatOf } from '../utils/mapTiles';
 import GuideList from '../components/GuideList';
 import SpotGallery from '../components/SpotGallery';
 import ReviewComposer from '../components/ReviewComposer';
@@ -37,36 +38,24 @@ import { auth } from '../firebase';
 import { useUser } from '../UserContext';
 import { useReviewStats } from '../utils/useReviewStats';
 import { useSavedPlaces } from '../utils/useSavedPlaces';
-
-const DEFAULT_SPOT = {
-  id: 1,
-  title: 'Kawasan Falls',
-  loc: 'Badian',
-  img: 'https://images.unsplash.com/photo-1518107616385-ad302212a99e?w=800',
-  coords: { latitude: 9.8034, longitude: 123.3744 },
-  transport: {
-    terminal: 'South Bus Terminal (Cebu City)',
-    busLine: 'Ceres Liner (via Barili)',
-    fare: '₱210 - ₱280',
-    schedule: 'Every 30 mins (3AM - 9PM)',
-    instructions:
-      "Board a bus marked 'Bato via Barili'. Tell the conductor to drop you off at the Matutinao Church in Badian.",
-  },
-};
+import { useSpots } from '../utils/useSpots';
 
 // Expo Router params are strings, so a pushed object arrives JSON-encoded.
+
+// Expo Router params are strings, so a pushed object arrives JSON-encoded.
+// Missing/corrupt params resolve to null — never a fake spot (BUG-02).
 function parseSpotParam(raw) {
-  if (!raw) return DEFAULT_SPOT;
+  if (!raw) return null;
   try {
-    return { ...DEFAULT_SPOT, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
   } catch {
-    return DEFAULT_SPOT;
+    return null;
   }
 }
 
 const SpotDetailScreen = () => {
   const params = useLocalSearchParams();
-  const mapRef = useRef(null);
   const { colors, isDarkMode } = useTheme();
   const { colors: full } = useColorScheme();
 
@@ -84,24 +73,15 @@ const SpotDetailScreen = () => {
     instruction: full.muted,
   };
 
-  // Map style JSON needs hex; tokens are rgb() so convert (token-derived).
-  // ponytail: tiny rgb->hex glue, no new package for one map style
-  const toHex = (rgb) => {
-    const m = typeof rgb === 'string' ? rgb.match(/\d+/g) : null;
-    if (!m) return '#000000';
-    return '#' + m.map(Number).map((v) => v.toString(16).padStart(2, '0')).join('');
-  };
-
-  // Map dark-mode styling derived from tokens (Google Maps style JSON).
-  const mapDarkStyle = [
-    { elementType: 'geometry', stylers: [{ color: toHex(full.muted) }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: toHex(full.mutedForeground) }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: toHex(full.muted) }] },
-    { featureType: 'road', elementType: 'geometry', stylers: [{ color: toHex(full.border) }] },
-  ];
-
-  // Data Extraction from Route Params
-  const spot = parseSpotParam(params.spot);
+  // Data: resolve the pushed snapshot against the live catalog (DATA-01).
+  // Live wins when present; snapshot stays as the offline fallback.
+  const snap = parseSpotParam(params.spot);
+  const { spots: liveSpots } = useSpots();
+  const snapId = Number(snap?.spotId ?? snap?.id);
+  const live = Number.isFinite(snapId)
+    ? liveSpots.find((s) => Number(s.spotId ?? s.id) === snapId) ?? null
+    : null;
+  const spot = live ?? snap;
 
   // Real reviews: stats + own review for the composer.
   const { stats, listFor, refresh: refreshReviews } = useReviewStats();
@@ -112,14 +92,14 @@ const SpotDetailScreen = () => {
     auth.currentUser?.displayName ||
     auth.currentUser?.email?.split('@')[0] ||
     'Traveller';
-  const ownReview = uid ? listFor(spot.id).find((r) => r.uid === uid) ?? null : null;
+  const ownReview = uid ? listFor(spot?.id).find((r) => r.uid === uid) ?? null : null;
   const { isSaved, toggleSave, busy: saveBusy } = useSavedPlaces();
-  const heroSaved = isSaved(spot.id);
-  const realStat = stats[Number(spot.id)] ?? null;
-  const realList = listFor(spot.id);
+  const heroSaved = isSaved(spot?.id);
+  const realStat = spot ? stats[Number(spot.id)] ?? null : null;
+  const realList = listFor(spot?.id);
   const heroRating = realStat
     ? { value: realStat.avg, count: realStat.count }
-    : spot.rating != null
+    : spot?.rating != null
       ? { value: spot.rating, count: spot.reviewsCount ?? null }
       : null;
   const [reviewsOpen, setReviewsOpen] = useState(false);
@@ -145,15 +125,6 @@ const SpotDetailScreen = () => {
         accuracy: Location.Accuracy.Balanced,
       });
       setUserLocation(location.coords);
-      if (spot.coords) {
-        const dist = getDistanceFromLatLonInKm(
-          location.coords.latitude,
-          location.coords.longitude,
-          spot.coords.latitude,
-          spot.coords.longitude
-        );
-        setDistance(dist.toFixed(1));
-      }
     } catch {
       setLocDenied(true);
     } finally {
@@ -164,6 +135,21 @@ const SpotDetailScreen = () => {
   useEffect(() => {
     loadLocation();
   }, []);
+
+  // Distance follows both fixes: GPS arriving late AND the snapshot being
+  // replaced by the live spot (DATA-01) recompute it.
+  useEffect(() => {
+    if (userLocation && spot?.coords) {
+      setDistance(
+        getDistanceFromLatLonInKm(
+          userLocation.latitude,
+          userLocation.longitude,
+          spot.coords.latitude,
+          spot.coords.longitude
+        ).toFixed(1)
+      );
+    }
+  }, [userLocation, spot?.coords?.latitude, spot?.coords?.longitude]);
 
   // 2. Helper Logic: Haversine Formula
   function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -182,13 +168,13 @@ const SpotDetailScreen = () => {
     return deg * (Math.PI / 180);
   }
 
-  // 3. Navigation Intent
+  // 3. Navigation Intent (provider-neutral geo: handoff — no Maps SDK/key).
   const handleOpenMaps = () => {
-    if (!spot.coords) return;
+    if (!spot?.coords) return;
     const latLng = `${spot.coords.latitude},${spot.coords.longitude}`;
     const url = Platform.select({
       ios: `maps:0,0?q=${spot.title}&daddr=${latLng}`,
-      android: `google.navigation:q=${latLng}`
+      android: `geo:${latLng}?q=${latLng}(${encodeURIComponent(spot.title)})`
     });
     Linking.openURL(url);
   };
@@ -199,6 +185,24 @@ const SpotDetailScreen = () => {
   };
 
   const activeTabFg = full.accentForeground;
+
+  // BUG-02: no params (or corrupt JSON) shows not-found, never a fake spot.
+  if (!spot) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 8 }}>Spot not found</Text>
+        <Text style={{ fontSize: 14, color: colors.subText, textAlign: 'center', marginBottom: 16 }}>
+          This spot may have been removed or the link is invalid.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12 }}
+        >
+          <Text style={{ color: full.accentForeground, fontWeight: '700' }}>Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -308,21 +312,38 @@ const SpotDetailScreen = () => {
 
               <View style={[styles.miniMapContainer, { backgroundColor: full.muted }]}>
                 {userLocation && spot.coords ? (
-                  <MapView
-                    ref={mapRef}
-                    provider={PROVIDER_GOOGLE}
-                    style={StyleSheet.absoluteFillObject}
-                    initialRegion={{
-                      latitude: (userLocation.latitude + spot.coords.latitude) / 2,
-                      longitude: (userLocation.longitude + spot.coords.longitude) / 2,
-                      latitudeDelta: Math.abs(userLocation.latitude - spot.coords.latitude) * 2,
-                      longitudeDelta: Math.abs(userLocation.longitude - spot.coords.longitude) * 2,
-                    }}
-                    customMapStyle={isDarkMode ? mapDarkStyle : []}
-                  >
-                    <Marker coordinate={userLocation} title="You" pinColor={full.primary} />
-                    <Marker coordinate={spot.coords} title={spot.title} pinColor={colors.accent} />
-                  </MapView>
+                  (() => {
+                    // Frame both points; co-located zooms close-up (old
+                    // clamped-delta behavior, now as zoom levels).
+                    const span = Math.max(
+                      Math.abs(userLocation.latitude - spot.coords.latitude),
+                      Math.abs(userLocation.longitude - spot.coords.longitude),
+                      0.02
+                    );
+                    const zoom = span > 1 ? 8 : span > 0.3 ? 10 : span > 0.08 ? 12 : 14;
+                    return (
+                      <Map
+                        style={StyleSheet.absoluteFillObject}
+                        mapStyle={mapStyleFor(isDarkMode)}
+                      >
+                        <Camera
+                          initialViewState={{
+                            center: [
+                              (userLocation.longitude + spot.coords.longitude) / 2,
+                              (userLocation.latitude + spot.coords.latitude) / 2,
+                            ],
+                            zoom,
+                          }}
+                        />
+                        <Marker id="you" lngLat={lngLatOf(userLocation)} anchor="center">
+                          <View style={[styles.dot, { backgroundColor: full.primary, borderColor: '#fff' }]} />
+                        </Marker>
+                        <Marker id="spot" lngLat={lngLatOf(spot.coords)} anchor="bottom">
+                          <View style={[styles.dotLarge, { backgroundColor: colors.accent, borderColor: '#fff' }]} />
+                        </Marker>
+                      </Map>
+                    );
+                  })()
                 ) : locDenied && !loadingLoc ? (
                   <View style={styles.mapPlaceholder}>
                     <Text style={[styles.mapOffTitle, { color: colors.text }]}>Location is off</Text>
@@ -565,6 +586,8 @@ const styles = StyleSheet.create({
   liveText: { fontSize: 10, fontWeight: 'bold' },
 
   miniMapContainer: { height: 180, borderRadius: 16, overflow: 'hidden', marginBottom: 15 },
+  dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 3 },
+  dotLarge: { width: 26, height: 26, borderRadius: 13, borderWidth: 3 },
   mapPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 },
   mapOffTitle: { fontSize: 15, fontWeight: '800' },
   mapOffText: { fontSize: 13, textAlign: 'center', marginTop: 4, lineHeight: 19 },

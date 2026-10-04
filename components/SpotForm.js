@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -61,12 +61,22 @@ const SpotForm = ({ initial, onSubmit, submitLabel, busy }) => {
       : [blankStop()]
   );
 
-  // Nominatim pick suggests a title after mount; fill it only when the field
-  // is still empty so typed text is never wiped.
+  // Suggestion tracking: a new pick replaces values the previous pick
+  // filled, but never touches admin-typed text. Without this, picking
+  // place B after place A leaves A's title/loc/address stuck in the form.
+  const appliedRef = useRef({ title: '', loc: '', address: '' });
   useEffect(() => {
-    if (src.title && !title) setTitle(src.title);
+    const next = { title: src.title || '', loc: src.loc || '', address: src.address || '' };
+    const prev = appliedRef.current;
+    // Blank-or-stale fields take the new suggestion verbatim — including
+    // empty, so pick B clears pick A's leftovers instead of keeping them.
+    // Admin-typed text (differs from both) is never touched.
+    if (title === '' || title === prev.title) setTitle(next.title);
+    if (loc === '' || loc === prev.loc) setLoc(next.loc);
+    if (address === '' || address === prev.address) setAddress(next.address);
+    appliedRef.current = next;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src.title]);
+  }, [src.title, src.loc, src.address]);
 
   const inputStyle = [
     styles.input,

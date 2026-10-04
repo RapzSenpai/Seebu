@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity,
   StyleSheet, SafeAreaView, Image, StatusBar, Dimensions, Platform,
@@ -10,12 +10,13 @@ import { useTheme } from '../ThemeContext'; // Integrated Theme Hook
 import { useColorScheme } from '../lib/useColorScheme';
 import IslandBackground from '../components/IslandBackground';
 import BottomSheetModal from '../components/BottomSheetModal';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSpots } from '../utils/useSpots';
 import { useReviewStats } from '../utils/useReviewStats';
 import { useUser } from '../UserContext';
 import { auth } from '../firebase';
 import { useSavedPlaces } from '../utils/useSavedPlaces';
+import { cx } from '../utils/cloudinary';
 
 const { width } = Dimensions.get('window');
 
@@ -25,7 +26,14 @@ const CATS = ['All', 'Beach', 'Nature', 'History', 'Adventure'];
 const ExploreScreen = () => {
   const { isDarkMode, colors } = useTheme(); // Use Theme Context
   const { colors: full } = useColorScheme();
-  const { spots } = useSpots();
+  const { spots, refresh: refreshSpots } = useSpots();
+  // DATA-03: the catalog was one-shot — refresh every visit so another
+  // admin's publish (or your own) shows without a restart.
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshSpots();
+    }, [refreshSpots])
+  );
   const { stats: reviewStats } = useReviewStats();
   const { profile } = useUser();
   const { isSaved, toggleSave, busy: saveBusy } = useSavedPlaces();
@@ -58,19 +66,28 @@ const ExploreScreen = () => {
     setSheetOverride(null);
   }, [selectedSpot?.id]);
 
-  const counts = {};
-  spots.forEach((s) => {
-    counts[s.type] = (counts[s.type] || 0) + 1;
-  });
+  // PERF-03: filters rebuild only when inputs change — every keystroke
+  // re-renders anyway, but tab switches/theme flips no longer recompute.
+  const counts = useMemo(() => {
+    const c = {};
+    spots.forEach((s) => {
+      c[s.type] = (c[s.type] || 0) + 1;
+    });
+    return c;
+  }, [spots]);
 
   const q = searchQuery.trim().toLowerCase();
-  const filteredSpots = spots.filter((spot) =>
-    (activeCat === 'All' || (spot.type || 'Spot') === activeCat) &&
-    (!q ||
-      (spot.title || '').toLowerCase().includes(q) ||
-      (spot.loc || '').toLowerCase().includes(q))
+  const filteredSpots = useMemo(
+    () =>
+      spots.filter((spot) =>
+        (activeCat === 'All' || (spot.type || 'Spot') === activeCat) &&
+        (!q ||
+          (spot.title || '').toLowerCase().includes(q) ||
+          (spot.loc || '').toLowerCase().includes(q))
+      ),
+    [spots, activeCat, q]
   );
-  const railSpots = filteredSpots.slice(0, 5);
+  const railSpots = useMemo(() => filteredSpots.slice(0, 5), [filteredSpots]);
   const isFiltering = q.length > 0 || activeCat !== 'All';
 
   const handleStartNavigation = () => {
@@ -183,7 +200,7 @@ const ExploreScreen = () => {
               onPress={() => setSelectedSpot(spot)}
               activeOpacity={0.92}
             >
-              <Image source={{ uri: spot.img }} style={styles.featuredImage} />
+              <Image source={{ uri: cx(spot.img, 800) }} style={styles.featuredImage} />
               <View style={styles.scrim} />
               <View style={styles.featuredTop}>
                 <View style={[styles.tag, { backgroundColor: colors.accent }]}>
@@ -232,7 +249,7 @@ const ExploreScreen = () => {
                 style={[styles.miniCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={() => setSelectedSpot(spot)}
               >
-                <Image source={{ uri: spot.img }} style={styles.miniImg} />
+                <Image source={{ uri: cx(spot.img, 400) }} style={styles.miniImg} />
                 <View style={styles.miniInfo}>
                   <Text style={[styles.miniTitle, { color: colors.text }]} numberOfLines={1}>{spot.title}</Text>
                   <Text style={[styles.miniLoc, { color: colors.subText }]}>{spot.loc}</Text>
@@ -258,7 +275,7 @@ const ExploreScreen = () => {
       >
         {selectedSpot && (
           <ScrollView showsVerticalScrollIndicator={false}>
-                <Image source={{ uri: selectedSpot.img }} style={styles.detailImg} />
+                <Image source={{ uri: cx(selectedSpot.img, 800) }} style={styles.detailImg} />
                 <View style={styles.detailHead}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.detailTitle, { color: colors.text }]} numberOfLines={2}>{selectedSpot.title}</Text>
